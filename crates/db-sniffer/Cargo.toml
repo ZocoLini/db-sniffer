@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 odbc-api = { version = "10.0.0" }
+sqlx = { version = "0.8.2"}
