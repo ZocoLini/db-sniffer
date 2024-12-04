@@ -1,9 +1,10 @@
+use sqlx::MySqlConnection;
 use crate::ConnectionParams;
 use crate::sniffers::{DatabaseSniffer, SniffResults};
 
 pub struct MySQLSniffer
 {
-    
+    conn: MySqlConnection
 }
 
 impl DatabaseSniffer for MySQLSniffer {
