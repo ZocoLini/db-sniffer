@@ -12,3 +12,8 @@ pub struct Schema
 {
     
 }
+
+pub struct Metadata
+{
+    
+}

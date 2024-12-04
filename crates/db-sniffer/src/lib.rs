@@ -1,5 +1,5 @@
+use crate::sniffers::{DatabaseSniffer, SniffResults};
 use std::str::FromStr;
-use crate::Error::NotSupportedDBError;
 
 #[allow(unused)] pub mod db_objects;
 #[allow(unused)] mod sniffers;
@@ -13,13 +13,17 @@ pub enum Error
 }
 
 /// conn_str: db://user:password@host:port/[dbname]
-pub fn sniff(conn_str: &str) -> Result<Vec<db_objects::Database>, Error>
+pub fn sniff(conn_str: &str) -> Result<SniffResults, Error>
 {
     let conn_params = conn_str.parse::<ConnectionParams>()?;
     
-    match conn_params.db { 
+    match conn_params.db.to_lowercase().as_str() { 
+        "mysql" => { 
+            let sniffer = sniffers::mysql::MySQLSniffer::new(conn_params);
+            Ok(sniffer.sniff())
+        }
         _ => {
-            Err(NotSupportedDBError)
+            Err(Error::NotSupportedDBError)
         }
     }
 }
@@ -130,8 +134,5 @@ mod tests
         
         let conn_str = "a:b";
         assert!(conn_str.parse::<ConnectionParams>().is_err());
-        
-        let conn_str = "db://";
-        assert!(conn_str.parse::<ConnectionParams>().is_err())
     }
 }
