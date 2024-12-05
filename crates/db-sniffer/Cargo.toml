@@ -5,5 +5,8 @@ edition = "2021"
 
 [dependencies]
 odbc-api = { version = "10.0.0" }
-sqlx = { version = "0.8.2", features = ["all-databases", "runtime-tokio"]}
+# mysql and sqlite support
+sqlx = { version = "0.8.2", features = ["mysql", "sqlite", "runtime-tokio"]}
+# mssql support
+tiberius= { version = "0.12.3" }
 regex = { version = "1.11.1" }

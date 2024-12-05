@@ -5,12 +5,12 @@ use crate::db_objects::{Database, Metadata};
 
 pub struct SniffResults
 {
-    metadata: Metadata,
+    metadata: Option<Metadata>,
     databases: Vec<Database>
 }
 
 pub trait DatabaseSniffer
 {
-    fn new(params: ConnectionParams) -> Self;
-    fn sniff(&self) -> SniffResults;
+    fn new(params: ConnectionParams) -> Result<Self, crate::Error>;
+    async fn sniff(&self) -> SniffResults;
 }

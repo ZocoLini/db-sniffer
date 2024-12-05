@@ -1,3 +1,6 @@
 [workspace]
 resolver = "2"
 members = ["crates/cli", "crates/db-sniffer"]
+
+[dependencies]
+tokio = { version = "1.0", features = ["full"] }

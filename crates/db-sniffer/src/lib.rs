@@ -10,17 +10,27 @@ pub enum Error
 {
     InvalidConnStringError,
     NotSupportedDBError,
+    MissingParamError(String),
+    SQLxError(sqlx::Error),
+}
+
+impl From<sqlx::Error> for Error {
+    fn from(value: sqlx::Error) -> Self {
+        match value { 
+            _ => Error::SQLxError(value)
+        }
+    }
 }
 
 /// conn_str: db://user:password@host:port/[dbname]
-pub fn sniff(conn_str: &str) -> Result<SniffResults, Error>
+pub async fn sniff(conn_str: &str) -> Result<SniffResults, Error>
 {
     let conn_params = conn_str.parse::<ConnectionParams>()?;
     
     match conn_params.db.to_lowercase().as_str() { 
         "mysql" => { 
-            let sniffer = sniffers::mysql::MySQLSniffer::new(conn_params);
-            Ok(sniffer.sniff())
+            let sniffer = sniffers::mysql::MySQLSniffer::new(conn_params)?;
+            Ok(sniffer.sniff().await)
         }
         _ => {
             Err(Error::NotSupportedDBError)
