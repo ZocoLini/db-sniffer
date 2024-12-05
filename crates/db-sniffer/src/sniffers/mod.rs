@@ -9,8 +9,8 @@ pub struct SniffResults
     databases: Vec<Database>
 }
 
-pub trait DatabaseSniffer
+pub trait DatabaseSniffer: Sized
 {
-    fn new(params: ConnectionParams) -> Result<Self, crate::Error>;
+    async fn new(params: ConnectionParams) -> Result<Self, crate::Error>;
     async fn sniff(&self) -> SniffResults;
 }

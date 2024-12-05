@@ -16,7 +16,7 @@ pub enum Error
 
 impl From<sqlx::Error> for Error {
     fn from(value: sqlx::Error) -> Self {
-        match value { 
+        match value {
             _ => Error::SQLxError(value)
         }
     }
@@ -29,7 +29,7 @@ pub async fn sniff(conn_str: &str) -> Result<SniffResults, Error>
     
     match conn_params.db.to_lowercase().as_str() { 
         "mysql" => { 
-            let sniffer = sniffers::mysql::MySQLSniffer::new(conn_params)?;
+            let sniffer = sniffers::mysql::MySQLSniffer::new(conn_params).await?;
             Ok(sniffer.sniff().await)
         }
         _ => {
