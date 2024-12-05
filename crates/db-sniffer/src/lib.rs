@@ -38,6 +38,7 @@ pub async fn sniff(conn_str: &str) -> Result<SniffResults, Error>
     }
 }
 
+#[derive(Clone)]
 struct ConnectionParams
 {
     db: String,
