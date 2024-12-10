@@ -1,4 +1,5 @@
-use sqlx::{Connection, MySqlConnection};
+use std::ops::Deref;
+use sqlx::{Connection, Executor, MySqlConnection, Row};
 use crate::ConnectionParams;
 use crate::Error::MissingParamError;
 use crate::sniffers::{DatabaseSniffer, SniffResults};
@@ -37,7 +38,19 @@ impl DatabaseSniffer for MySQLSniffer {
         Ok(sniffer)
     }
 
-    async fn sniff(&self) -> SniffResults {
+    async fn sniff(&mut self) -> SniffResults {
+        #[cfg(test)]
+        {
+            let rows = sqlx::query("SHOW DATABASES")
+                .fetch_all(&mut self.conn)
+                .await.unwrap();
+
+            for row in rows {
+                let database: &str = row.get(0);
+                println!("{}", database);
+            }
+        }
+        
         SniffResults {
             metadata: Default::default(),
             databases: vec![]

@@ -29,7 +29,7 @@ pub async fn sniff(conn_str: &str) -> Result<SniffResults, Error>
     
     match conn_params.db.to_lowercase().as_str() { 
         "mysql" => { 
-            let sniffer = sniffers::mysql::MySQLSniffer::new(conn_params).await?;
+            let mut sniffer = sniffers::mysql::MySQLSniffer::new(conn_params).await?;
             Ok(sniffer.sniff().await)
         }
         _ => {
@@ -79,13 +79,13 @@ mod tests
     #[test]
     fn test_connection_params_from_valid_str()
     {
-        // Usual db with a user, a host and a specific db
+        // Usual db with a user, a host, and a specific db
         let conn_str = "db://user:password@localhost:3306/dbname";
         let conn_params = conn_str.parse::<ConnectionParams>().unwrap();
         validate_obl_params(&conn_params);
         assert_eq!(conn_params.dbname, Some("dbname".to_string()));
         
-        // Embedded db without user
+        // Embedded db without a user
         let conn_str = "sqlite://dbname";
         let conn_params = conn_str.parse::<ConnectionParams>().unwrap();
         assert_eq!(conn_params.db, "sqlite");
@@ -107,7 +107,7 @@ mod tests
         validate_obl_params(&conn_params);
         assert_eq!(conn_params.dbname, None);
 
-        // Usual db with a user and a host 2
+        // Usual db with a user and a host - 2
         let conn_str = "db://user:password@localhost:3306/";
         let conn_params = conn_str.parse::<ConnectionParams>().unwrap();
         validate_obl_params(&conn_params);

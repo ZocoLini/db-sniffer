@@ -12,5 +12,5 @@ pub struct SniffResults
 pub trait DatabaseSniffer: Sized
 {
     async fn new(params: ConnectionParams) -> Result<Self, crate::Error>;
-    async fn sniff(&self) -> SniffResults;
+    async fn sniff(&mut self) -> SniffResults;
 }
