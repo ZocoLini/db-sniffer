@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE hibernate-mapping PUBLIC "-//Hibernate/Hibernate Mapping DTD 3.0//EN" "http://www.hibernate.org/dtd/hibernate-mapping-3.0.dtd">
+<!-- Generated 02-feb-2021 0:15:38 by Hibernate Tools 3.6.0 -->
+<hibernate-mapping>
+    <class catalog="EMPRESAHB2" name="POJOS.Departamento" schema="dbo" table="DEPARTAMENTO">
+        <id name="numDepartamento" type="int">
+            <column name="NumDepartamento"/>
+            <generator class="increment"/>
+        </id>
+        <many-to-one class="POJOS.Empregadofixo" fetch="select" name="director">
+            <column length="15" name="NSSDirector" not-null="true"/>
+        </many-to-one>
+        <property name="nomeDepartamento" type="string">
+            <column length="25" name="NomeDepartamento" not-null="true" unique="true"/>
+        </property>
+        <set fetch="select" inverse="true" lazy="true" name="empregados" table="EMPREGADO">
+            <key>
+                <column name="NumDepartamentoPertenece"/>
+            </key>
+            <one-to-many class="POJOS.Empregado"/>
+        </set>
+        <idbag  name="lugares" table="LUGAR">
+            <collection-id column="ID" type="java.lang.Integer" >
+                <generator class="increment"/> 
+            </collection-id>
+            <key>
+                <column name="Num_departamento" not-null="true"/>
+            </key>
+            <element column="Lugar" type="string" not-null="true"/>
+        </idbag>
+   
+        <bag fetch="select" inverse="true" lazy="true" name="proxectos" table="PROXECTO">
+            <key>
+                <column name="NumDepartControla" not-null="true"/>
+            </key>
+            <one-to-many class="POJOS.Proxecto"/>
+        </bag>
+    </class>
+</hibernate-mapping>

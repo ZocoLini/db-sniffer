@@ -4,7 +4,7 @@ use crate::ConnectionParams;
 use std::str::FromStr;
 
 pub fn existing_db_conn_params() -> ConnectionParams {
-    ConnectionParams::from_str("mysql://root:abc123.@10.0.2.4:3306/bdempresa").unwrap()
+    ConnectionParams::from_str("mysql://test_user:abc123.@test-db.lebastudios.org:3306/Test").unwrap()
 }
 
 pub fn not_existing_db_conn_params() -> ConnectionParams {

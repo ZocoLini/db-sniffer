@@ -26,7 +26,7 @@ impl FromStr for ColumnType {
             "double" => Ok(ColumnType::Double),
             "date" => Ok(ColumnType::Date),
             "time" => Ok(ColumnType::Time),
-            "datetime" => Ok(ColumnType::DateTime),
+            "datetime" | "timestamp" => Ok(ColumnType::DateTime),
             "boolean" | "bool" => Ok(ColumnType::Boolean),
             "blob" => Ok(ColumnType::Blob),
             "decimal" => Ok(ColumnType::Decimal),

@@ -10,5 +10,11 @@ pub fn collapse_xml(xml: &str) -> String {
 }
 
 pub fn compare_xml(a: &str, b: &str) -> bool {
-    collapse_xml(a) == collapse_xml(b)
+    if collapse_xml(a) == collapse_xml(b) {  return true; }
+    
+    println!("XMLs are different:");
+    println!("Left: {}", a);
+    println!("Right: {}", b);
+    
+    false
 }
