@@ -1,4 +1,4 @@
-use crate::db_objects::{ColumnType, KeyType, Table};
+use crate::db_objects::{Column, ColumnType, GenerationType, KeyType, Table};
 use crate::sniffers::SniffResults;
 #[cfg(test)]
 use crate::test_utils;
@@ -6,7 +6,7 @@ use crate::test_utils;
 use crate::test_utils::mysql::trivial_sniff_results;
 use std::cmp::PartialEq;
 use std::ops::Add;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::{env, fs};
 
 pub struct AnnotatedClassGenerator;
@@ -17,10 +17,53 @@ impl AnnotatedClassGenerator {
     }
 }
 
-pub struct XMLGenerator;
+pub struct XMLGenerator<'a> {
+    target_path: &'a PathBuf,
+    sniff_results: &'a SniffResults,
+    package: String,
+    src_path: PathBuf,
+}
 
-impl XMLGenerator {
-    pub fn generate(&self, sniff_results: &SniffResults, target_path: &PathBuf) {
+impl<'a> XMLGenerator<'a> {
+    pub fn new(sniff_results: &'a SniffResults, target_path: &'a PathBuf) -> Option<Self> {
+        let src_path = get_java_src_root(target_path);
+        let package = get_java_package_name(target_path);
+
+        let src_path = if let Some(o) = src_path {
+            o
+        } else {
+            println!("src dir not found as a parent od the output dir");
+            return None;
+        };
+
+        let package = if let Some(o) = package {
+            o
+        } else {
+            println!("The package name couldn't be determined");
+            return None;
+        };
+
+        #[cfg(debug_assertions)]
+        {
+            println!("Detected package name: {package}");
+            println!(
+                "Found source root folder: {}",
+                src_path.to_str().unwrap_or_default()
+            )
+        }
+
+        Some(XMLGenerator {
+            target_path,
+            sniff_results,
+            package,
+            src_path,
+        })
+    }
+
+    pub fn generate(&self) {
+        let target_path = self.target_path;
+        let sniff_results = self.sniff_results;
+
         if !target_path.exists() {
             if let Err(e) = fs::create_dir_all(target_path) {
                 println!(
@@ -31,44 +74,20 @@ impl XMLGenerator {
             };
         }
 
-        let src_root = get_java_src_root(target_path);
-        let package = get_java_package_name(target_path);
+        self.generate_tables_files(
+            sniff_results.database().tables(),
+        );
 
-        let src_root = if let Some(o) = src_root {
-            o
-        } else {
-            println!("src dir not found as a parent od the output dir");
-            return;
-        };
-
-        let package = if let Some(o) = package {
-            o
-        } else {
-            println!("The package name couldn't be determined");
-            return;
-        };
-
-        #[cfg(debug_assertions)]
-        {
-            println!("Detected package name: {package}");
-            println!(
-                "Found source root folder: {}",
-                src_root.to_str().unwrap_or_default()
-            )
-        }
-
-        self.generate_tables_files(sniff_results.database().tables(), target_path, &package);
-
-        let conf_xml = self.generate_conf_xml(sniff_results);
-        let conf_file_path = src_root.join("hibernate.cfg.xml");
+        let conf_xml = self.generate_conf_xml();
+        let conf_file_path = self.src_path.join("hibernate.cfg.xml");
 
         fs::File::create(&conf_file_path).unwrap();
 
         fs::write(conf_file_path, conf_xml).unwrap();
     }
 
-    fn generate_conf_xml(&self, sniff_results: &SniffResults) -> String {
-        let conn_params = sniff_results.conn_params();
+    fn generate_conf_xml(&self) -> String {
+        let conn_params = self.sniff_results.conn_params();
 
         format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -105,11 +124,12 @@ impl XMLGenerator {
         )
     }
 
-    fn generate_tables_files(&self, tables: &Vec<Table>, target_path: &PathBuf, package: &str) {
+    fn generate_tables_files(&self, tables: &Vec<Table>) {
         for table in tables {
-            let table_xml = self.generate_table_xml(table, package);
-            let table_file_path =
-                target_path.join(format!("{}.hbm.xml", to_upper_camel_case(table.name())));
+            let table_xml = self.generate_table_xml(table);
+            let table_file_path = self
+                .target_path
+                .join(format!("{}.hbm.xml", to_upper_camel_case(table.name())));
 
             fs::File::create(&table_file_path).unwrap();
 
@@ -117,7 +137,8 @@ impl XMLGenerator {
         }
     }
 
-    fn generate_table_xml(&self, table: &Table, package: &str) -> String {
+    fn generate_table_xml(&self, table: &Table) -> String {
+        let package = &self.package;
         let xml = format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE hibernate-mapping PUBLIC
@@ -125,11 +146,11 @@ impl XMLGenerator {
     "http://www.hibernate.org/dtd/hibernate-mapping-3.0.dtd">
 
 <hibernate-mapping>
-    <class name="{package}.{}" table="{}">
-        {}
-        {}
-        {}
-    </class>
+  <class name="{package}.{}" table="{}">
+{}
+{}
+{}
+  </class>
 </hibernate-mapping>
         "#,
             to_upper_camel_case(table.name()),
@@ -143,30 +164,40 @@ impl XMLGenerator {
 
         fn generate_id_xml(table: &Table, package: &str) -> String {
             let id_columns = table.ids();
-            let mut result = "<!-- Id -->\n".to_string();
+            let mut result = "    <!-- Id -->\n".to_string();
 
-            if id_columns.len() == 0 {
+            if id_columns.is_empty() {
                 return result;
             }
 
             if id_columns.len() == 1 {
                 let id = id_columns[0];
                 result = result.add(&format!(
-                    r#"<id name="{}" column="{}" type="{}">{}"#,
+                    r#"    <id name="{}" type="{}">{}"#,
                     to_lower_camel_case(id.name()),
-                    id.name(),
                     column_type_to_hibernate_type(id.r#type()),
                     "\n"
                 ));
-                
-                
-                
-                result = result.add("<generator class=\"native\"/>\n");
-                result = result.add("</id>\n");
+
+                result = result.add(&format!("      {}", &generate_column_xml(id)));
+
+                match id.key() {
+                    KeyType::Primary(a) => match a {
+                        GenerationType::None => {
+                            result = result.add("      <generator class=\"assigned\"/>\n");
+                        }
+                        GenerationType::AutoIncrement => {
+                            result = result.add("      <generator class=\"identity\"/>\n");
+                        }
+                    },
+                    _ => panic!("This seccion should not be reached"),
+                }
+
+                result = result.add("    </id>\n");
             } else {
                 // TODO: Generate ID Class
                 result = result.add(&format!(
-                    r#"<composite-id name="{}" class="{}.{}">{}"#,
+                    r#"    <composite-id name="{}" class="{}.{}">{}"#,
                     "id",
                     package,
                     to_upper_camel_case(&format!("{}Id", table.name())),
@@ -175,48 +206,59 @@ impl XMLGenerator {
 
                 for id_column in id_columns {
                     result = result.add(&format!(
-                        r#"<key-property name="{}" column="{}" type="{}"/>{}"#,
+                        r#"      <key-property name="{}" type="{}">{}"#,
                         to_lower_camel_case(id_column.name()),
-                        id_column.name(),
                         column_type_to_hibernate_type(id_column.r#type()),
                         "\n"
-                    ))
+                    ));
+
+                    result = result.add(&generate_column_xml(id_column));
+
+                    result = result.add("      </key-property>\n");
                 }
 
-                result = result.add("</composite-id>\n");
+                result = result.add("    </composite-id>\n");
             }
 
             result
         }
 
         fn generate_properties_xml(table: &Table) -> String {
-            let mut result = "<!-- Properties -->\n".to_string();
+            let mut result = "    <!-- Properties -->\n".to_string();
 
             for column in table.columns() {
-                if *column.key() == KeyType::Primary {
+                if let KeyType::Primary(_) = column.key() {
                     continue;
                 }
 
                 result = result.add(&format!(
-                    r#"<property name="{}" column="{}" type="{}"/>"#,
-                    column.name(),
-                    column.name(),
-                    column_type_to_hibernate_type(column.r#type())
+                    r#"    <property name="{}" type="{}">{}"#,
+                    to_lower_camel_case(column.name()),
+                    column_type_to_hibernate_type(column.r#type()),
+                    "\n"
                 ));
+
+                result = result.add(&format!("      {}", &generate_column_xml(column)));
+
+                result = result.add("    </property>\n");
             }
 
             result
         }
 
-        fn generate_relations_xml(_table: &Table) -> String {
-            let sql = r#"
-SELECT REFERENCED_TABLE_NAME
-FROM information_schema.REFERENTIAL_CONSTRAINTS
-WHERE TABLE_NAME = 'Address'
-  AND REFERENCED_TABLE_NAME IS NOT NULL;
-            "#;
+        fn generate_column_xml(column: &Column) -> String {
+            format!(
+                r#"<column name="{}" {}/>{}"#,
+                column.name(),
+                column.nullable().then(|| "not-null=\"true\"").unwrap_or(""),
+                "\n"
+            )
+        }
 
-            let mut result = "<!-- Relations -->".to_string();
+        fn generate_relations_xml(_table: &Table) -> String {
+            let mut result = "<!-- Relations -->\n".to_string();
+
+            // TODO: Implement relations
 
             result
         }
@@ -241,8 +283,7 @@ fn to_upper_camel_case(s: &str) -> String {
 
     name.replace_range(
         0..1,
-        name.chars()
-            .nth(0)
+        name.chars().next()
             .unwrap()
             .to_uppercase()
             .to_string()
@@ -292,8 +333,7 @@ fn to_lower_camel_case(s: &str) -> String {
 
     name.replace_range(
         0..1,
-        name.chars()
-            .nth(0)
+        name.chars().next()
             .unwrap()
             .to_lowercase()
             .to_string()
@@ -303,11 +343,11 @@ fn to_lower_camel_case(s: &str) -> String {
     name
 }
 
-fn get_java_package_name(path: &PathBuf) -> Option<String> {
+fn get_java_package_name(path: &Path) -> Option<String> {
     let mut package = String::new();
     package = String::new();
 
-    let mut current = path.as_path();
+    let mut current = path;
 
     while current.file_name().unwrap().to_str().unwrap() != "src" {
         package = current.file_name().unwrap().to_str().unwrap().to_string() + "." + &package;
@@ -320,15 +360,15 @@ fn get_java_package_name(path: &PathBuf) -> Option<String> {
     Some(package)
 }
 
-fn get_java_src_root(path: &PathBuf) -> Option<PathBuf> {
-    let mut current = path.clone();
+fn get_java_src_root(path: &Path) -> Option<PathBuf> {
+    let mut current = path;
 
     while current.parent().is_some() {
         if current.ends_with("src") {
-            return Some(current);
+            return Some(PathBuf::from(current));
         }
 
-        current = current.parent().unwrap().to_path_buf();
+        current = current.parent().unwrap();
     }
 
     None
@@ -348,11 +388,12 @@ mod test {
         dotenvy::dotenv().ok();
 
         let sniff_results = trivial_sniff_results();
+        let target_path = PathBuf::from("src/com/example/model");
 
-        let generator = XMLGenerator;
+        let generator =
+            XMLGenerator::new(&sniff_results, &target_path).unwrap();
 
-        let generated = generator
-            .generate_table_xml(&sniff_results.database().tables()[0], "com.example.model");
+        let generated = generator.generate_table_xml(&sniff_results.database().tables()[0]);
         let expected = r#"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE hibernate-mapping PUBLIC
@@ -362,12 +403,15 @@ mod test {
 <hibernate-mapping>
     <class name="com.example.model.Users" table="users">
         <!-- Id -->
-        <id name="id" column="id" type="int">
-            <generator class="native"/>
+        <id name="id" type="int">
+            <column name="id" />
+            <generator class="assigned"/>
         </id>
 
         <!-- Properties -->
-        <property name="name" column="name" type="string"/>
+        <property name="name" type="string">
+            <column name="name" />
+        </property>
         
         <!-- Relations -->
     </class>
@@ -385,9 +429,9 @@ mod test {
         let target_path =
             PathBuf::from(env::var("TEST_DIR").unwrap()).join("src/com/example/model");
 
-        let generator = XMLGenerator;
+        let generator = XMLGenerator::new(&sniff_results, &target_path).unwrap();
 
-        generator.generate(&sniff_results, &target_path);
+        generator.generate();
     }
 
     #[tokio::test]
@@ -400,13 +444,13 @@ mod test {
                 .unwrap()
                 .sniff()
                 .await;
-        
+
         let target_path =
             PathBuf::from(env::var("TEST_DIR").unwrap()).join("src/com/example/model");
 
-        let generator = XMLGenerator;
+        let generator = XMLGenerator::new(&sniff_results, &target_path).unwrap();
 
-        generator.generate(&sniff_results, &target_path);
+        generator.generate();
     }
 
     #[tokio::test]

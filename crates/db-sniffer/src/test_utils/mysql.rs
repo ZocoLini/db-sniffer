@@ -1,10 +1,11 @@
-use crate::db_objects::{Column, ColumnType, Database, KeyType, Table};
+use crate::db_objects::{Column, ColumnType, Database, GenerationType, KeyType, Table};
 use crate::sniffers::SniffResults;
 use crate::ConnectionParams;
 use std::str::FromStr;
 
 pub fn simple_existing_db_conn_params() -> ConnectionParams {
-    ConnectionParams::from_str("mysql://test_user:abc123.@test-db.lebastudios.org:3306/Test").unwrap()
+    ConnectionParams::from_str("mysql://test_user:abc123.@test-db.lebastudios.org:3306/Test")
+        .unwrap()
 }
 
 pub fn not_existing_db_conn_params() -> ConnectionParams {
@@ -17,9 +18,16 @@ pub fn trivial_sniff_results() -> SniffResults {
             "id".to_string(),
             ColumnType::Integer,
             false,
-            KeyType::Primary,
+            KeyType::Primary(GenerationType::None),
+            None,
         ),
-        Column::new("name".to_string(), ColumnType::Text, false, KeyType::None),
+        Column::new(
+            "name".to_string(),
+            ColumnType::Text,
+            false,
+            KeyType::None,
+            None,
+        ),
     ];
 
     let mut table = Table::new("users");

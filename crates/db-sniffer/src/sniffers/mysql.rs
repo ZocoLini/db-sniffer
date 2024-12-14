@@ -1,11 +1,11 @@
-use crate::db_objects::{Column, ColumnType, Database, KeyType, Table};
+use crate::db_objects::{Column, ColumnType, Database, GenerationType, KeyType, Table};
 use crate::sniffers::{DatabaseSniffer, SniffResults};
 use crate::ConnectionParams;
 use crate::Error::MissingParamError;
+use sqlx::mysql::MySqlRow;
 use sqlx::{Connection, Executor, MySqlConnection, Row};
 use std::ops::Deref;
 use std::str::FromStr;
-use sqlx::mysql::MySqlRow;
 
 pub struct MySQLSniffer {
     conn_params: ConnectionParams,
@@ -53,12 +53,11 @@ impl DatabaseSniffer for MySQLSniffer {
 }
 
 impl MySQLSniffer {
-    async fn introspect_database(&mut self) -> Database
-    {
+    async fn introspect_database(&mut self) -> Database {
         let db_name = self.conn_params.dbname.as_ref().unwrap().as_str();
-        
+
         let mut database = Database::new(db_name);
-        
+
         let tables = sqlx::query("show tables")
             .fetch_all(&mut self.conn)
             .await
@@ -67,13 +66,13 @@ impl MySQLSniffer {
         for table in tables {
             database.add_table(self.introspect_table(table.get(0)).await);
         }
-        
+
         database
     }
-    
+
     async fn introspect_table(&mut self, table_name: &str) -> Table {
         let mut table = Table::new(table_name);
-        
+
         let columns = sqlx::query(format!("describe {}", table_name).as_str())
             .fetch_all(&mut self.conn)
             .await
@@ -85,13 +84,14 @@ impl MySQLSniffer {
         }
 
         for column in columns {
-            table.add_column(self.introspect_column(column).await);
+            let column = self.introspect_column(column, table_name).await;
+            table.add_column(column);
         }
-        
+
         table
     }
     
-    async fn introspect_column(&mut self, column: MySqlRow) -> Column {
+    async fn introspect_column(&mut self, column: MySqlRow, table_name: &str) -> Column {
         let field_name: &str = column.get(0);
         let field_type: &[u8] = column.get(1);
         let field_type = String::from_utf8_lossy(field_type).to_string();
@@ -115,27 +115,56 @@ impl MySQLSniffer {
                 field_extra
             );
         }
-        
+
         let key = match field_key.deref() {
-            "PRI" => KeyType::Primary,
+            "PRI" => match field_extra {
+                "auto_increment" => KeyType::Primary(GenerationType::AutoIncrement),
+                _ => KeyType::Primary(GenerationType::None),
+            },
             "MUL" => KeyType::Foreign,
             "UNI" => KeyType::Unique,
             _ => KeyType::None,
         };
 
+        let fk_constraint_sql = "SELECT
+                REFERENCED_TABLE_NAME,
+                REFERENCED_COLUMN_NAME
+            FROM
+                INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+            WHERE
+                TABLE_NAME = '?' AND
+                COLUMN_NAME = '?'";
+        
+        let fk_constraint = sqlx::query(fk_constraint_sql)
+            .bind(table_name)
+            .bind(field_name)
+            .fetch_optional(&mut self.conn)
+            .await
+            .unwrap();
+        
+        let reference = match fk_constraint {
+            Some(row) => {
+                let table_name: &str = row.get(0);
+                let column_name: &str = row.get(1);
+                Some((table_name.to_string(), column_name.to_string()))
+            }
+            None => None,
+        };
+        
         Column::new(
             field_name.to_string(),
             ColumnType::from_str(&field_type.to_string()).unwrap(),
             field_nullable,
             key,
+            reference,
         )
     }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::test_utils::mysql::simple_existing_db_conn_params;
     use super::*;
+    use crate::test_utils::mysql::simple_existing_db_conn_params;
 
     #[tokio::test]
     async fn test_mysql_sniffer() {

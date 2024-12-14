@@ -1,6 +1,6 @@
+use getset::Getters;
 use std::cmp::PartialEq;
 use std::str::FromStr;
-use getset::Getters;
 
 pub enum ColumnType {
     Integer,
@@ -35,13 +35,21 @@ impl FromStr for ColumnType {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq)]
+pub enum GenerationType {
+    None,
+    AutoIncrement,
+}
+
+#[derive(PartialEq)]
 pub enum KeyType {
-    Primary,
+    Primary(GenerationType),
     Foreign,
     Unique,
     None,
 }
+
+pub struct TableId(Vec<Column>);
 
 #[derive(Getters)]
 pub struct Table {
@@ -52,7 +60,7 @@ pub struct Table {
 }
 
 impl Table {
-    pub fn new(name: &str,) -> Self {
+    pub fn new(name: &str) -> Self {
         Table {
             name: name.to_string(),
             columns: Vec::new(),
@@ -62,9 +70,31 @@ impl Table {
     pub fn add_column(&mut self, column: Column) {
         self.columns.push(column);
     }
-    
+
     pub fn ids(&self) -> Vec<&Column> {
-        self.columns.iter().filter(|c| *c.key() == KeyType::Primary).collect()
+        self.columns
+            .iter()
+            .filter(|&c| {
+                return if let KeyType::Primary(_) = c.key() {
+                    true
+                } else {
+                    false
+                };
+            })
+            .collect()
+    }
+
+    pub fn fks(&self) -> Vec<&Column> {
+        self.columns
+            .iter()
+            .filter(|&c| {
+                return if let Some(_) = c.reference {
+                    true
+                } else {
+                    false
+                };
+            })
+            .collect()
     }
 }
 
@@ -78,15 +108,26 @@ pub struct Column {
     nullable: bool,
     #[get = "pub"]
     key: KeyType,
+    /// (table, column)
+    #[get = "pub"]
+    reference: Option<(String, String)>,
 }
 
+/// References are stored as (table, column)
 impl Column {
-    pub fn new(name: String, r#type: ColumnType, nullable: bool, key: KeyType) -> Self {
+    pub fn new(
+        name: String,
+        r#type: ColumnType,
+        nullable: bool,
+        key: KeyType,
+        reference: Option<(String, String)>,
+    ) -> Self {
         Column {
             name,
             r#type,
             nullable,
             key,
+            reference,
         }
     }
 }

@@ -32,8 +32,11 @@ impl Command for Sniff {
             None => env::current_dir().expect("Failed to get current directory"),
         };
 
-        let generator = hibernate::XMLGenerator;
-        generator.generate(&results, &output);
+        let generator = hibernate::XMLGenerator::new(
+            &results,
+            &output
+        ).unwrap();
+        generator.generate();
     }
 
     fn show_usage() {
