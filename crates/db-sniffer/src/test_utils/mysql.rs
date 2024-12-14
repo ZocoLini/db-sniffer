@@ -3,7 +3,7 @@ use crate::sniffers::SniffResults;
 use crate::ConnectionParams;
 use std::str::FromStr;
 
-pub fn existing_db_conn_params() -> ConnectionParams {
+pub fn simple_existing_db_conn_params() -> ConnectionParams {
     ConnectionParams::from_str("mysql://test_user:abc123.@test-db.lebastudios.org:3306/Test").unwrap()
 }
 

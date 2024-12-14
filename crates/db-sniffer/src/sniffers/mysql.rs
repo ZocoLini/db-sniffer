@@ -134,7 +134,7 @@ impl MySQLSniffer {
 
 #[cfg(test)]
 mod test {
-    use crate::test_utils::mysql::existing_db_conn_params;
+    use crate::test_utils::mysql::simple_existing_db_conn_params;
     use super::*;
 
     #[tokio::test]
@@ -144,7 +144,7 @@ mod test {
 
         assert!(MySQLSniffer::new(conn_params).await.is_err());
 
-        let conn_params = existing_db_conn_params();
+        let conn_params = simple_existing_db_conn_params();
 
         let sniffer = MySQLSniffer::new(conn_params).await;
         assert!(sniffer.is_ok());

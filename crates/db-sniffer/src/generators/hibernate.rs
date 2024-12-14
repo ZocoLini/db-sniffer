@@ -134,14 +134,14 @@ impl XMLGenerator {
         "#,
             to_upper_camel_case(table.name()),
             table.name(),
-            generate_id_xml(table),
+            generate_id_xml(table, package),
             generate_properties_xml(table),
             generate_relations_xml(table),
         );
 
         return xml;
 
-        fn generate_id_xml(table: &Table) -> String {
+        fn generate_id_xml(table: &Table, package: &str) -> String {
             let id_columns = table.ids();
             let mut result = "<!-- Id -->\n".to_string();
 
@@ -153,25 +153,30 @@ impl XMLGenerator {
                 let id = id_columns[0];
                 result = result.add(&format!(
                     r#"<id name="{}" column="{}" type="{}">{}"#,
-                    id.name(),
+                    to_lower_camel_case(id.name()),
                     id.name(),
                     column_type_to_hibernate_type(id.r#type()),
                     "\n"
                 ));
+                
+                
+                
                 result = result.add("<generator class=\"native\"/>\n");
                 result = result.add("</id>\n");
             } else {
+                // TODO: Generate ID Class
                 result = result.add(&format!(
-                    r#"<composite-id name="{}" class="com.example.{}">{}"#,
+                    r#"<composite-id name="{}" class="{}.{}">{}"#,
                     "id",
-                    to_upper_camel_case(table.name()),
+                    package,
+                    to_upper_camel_case(&format!("{}Id", table.name())),
                     "\n"
                 ));
 
                 for id_column in id_columns {
                     result = result.add(&format!(
                         r#"<key-property name="{}" column="{}" type="{}"/>{}"#,
-                        id_column.name(),
+                        to_lower_camel_case(id_column.name()),
                         id_column.name(),
                         column_type_to_hibernate_type(id_column.r#type()),
                         "\n"
@@ -233,12 +238,17 @@ fn column_type_to_hibernate_type(column_type: &ColumnType) -> String {
 
 fn to_upper_camel_case(s: &str) -> String {
     let mut name = to_lower_camel_case(s).to_string();
-    
+
     name.replace_range(
-        0..1, 
-        name.chars().nth(0).unwrap().to_uppercase().to_string().as_str()
+        0..1,
+        name.chars()
+            .nth(0)
+            .unwrap()
+            .to_uppercase()
+            .to_string()
+            .as_str(),
     );
-    
+
     name
 }
 
@@ -254,7 +264,7 @@ fn to_lower_camel_case(s: &str) -> String {
 
     let mut name = if all_upper {
         s.to_lowercase()
-    } else { 
+    } else {
         s.to_string()
     };
 
@@ -281,10 +291,15 @@ fn to_lower_camel_case(s: &str) -> String {
     name = name.replace("_", "");
 
     name.replace_range(
-        0..1, 
-        name.chars().nth(0).unwrap().to_lowercase().to_string().as_str()
+        0..1,
+        name.chars()
+            .nth(0)
+            .unwrap()
+            .to_lowercase()
+            .to_string()
+            .as_str(),
     );
-    
+
     name
 }
 
@@ -322,8 +337,9 @@ fn get_java_src_root(path: &PathBuf) -> Option<PathBuf> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils;
+    use crate::sniffers::DatabaseSniffer;
     use crate::test_utils::mysql::trivial_sniff_results;
+    use crate::{sniffers, test_utils};
     use std::env;
     use std::path::PathBuf;
 
@@ -335,8 +351,8 @@ mod test {
 
         let generator = XMLGenerator;
 
-        let generated =
-            generator.generate_table_xml(&sniff_results.database().tables()[0], "com.example.model");
+        let generated = generator
+            .generate_table_xml(&sniff_results.database().tables()[0], "com.example.model");
         let expected = r#"
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE hibernate-mapping PUBLIC
@@ -376,9 +392,23 @@ mod test {
 
     #[tokio::test]
     async fn test_simple_generate() {
+        dotenvy::dotenv().ok();
+
+        let sniff_results =
+            sniffers::mysql::MySQLSniffer::new(test_utils::mysql::simple_existing_db_conn_params())
+                .await
+                .unwrap()
+                .sniff()
+                .await;
         
+        let target_path =
+            PathBuf::from(env::var("TEST_DIR").unwrap()).join("src/com/example/model");
+
+        let generator = XMLGenerator;
+
+        generator.generate(&sniff_results, &target_path);
     }
-    
+
     #[tokio::test]
     async fn test_to_upper_camel_case() {
         assert_eq!(to_upper_camel_case("users"), "Users");
