@@ -212,7 +212,7 @@ impl<'a> XMLGenerator<'a> {
                         "\n"
                     ));
 
-                    result = result.add(&generate_column_xml(id_column));
+                    result = result.add(&format!("        {}", &generate_column_xml(id_column)));
 
                     result = result.add("      </key-property>\n");
                 }
@@ -256,7 +256,7 @@ impl<'a> XMLGenerator<'a> {
         }
 
         fn generate_relations_xml(_table: &Table) -> String {
-            let mut result = "<!-- Relations -->\n".to_string();
+            let mut result = "    <!-- Relations -->\n".to_string();
 
             // TODO: Implement relations
 
