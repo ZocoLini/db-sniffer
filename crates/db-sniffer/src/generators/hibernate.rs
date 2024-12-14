@@ -122,7 +122,7 @@ impl XMLGenerator {
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE hibernate-mapping PUBLIC
     "-//Hibernate/Hibernate Mapping DTD 3.0//EN"
-    "http://www.hibernate.org/dtd/hibernate-configuration-3.0.dtd">
+    "http://www.hibernate.org/dtd/hibernate-mapping-3.0.dtd">
 
 <hibernate-mapping>
     <class name="{package}.{}" table="{}">
@@ -341,7 +341,7 @@ mod test {
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE hibernate-mapping PUBLIC
     "-//Hibernate/Hibernate Mapping DTD 3.0//EN"
-    "http://www.hibernate.org/dtd/hibernate-configuration-3.0.dtd">
+    "http://www.hibernate.org/dtd/hibernate-mapping-3.0.dtd">
 
 <hibernate-mapping>
     <class name="com.example.model.Users" table="users">
@@ -374,6 +374,11 @@ mod test {
         generator.generate(&sniff_results, &target_path);
     }
 
+    #[tokio::test]
+    async fn test_simple_generate() {
+        
+    }
+    
     #[tokio::test]
     async fn test_to_upper_camel_case() {
         assert_eq!(to_upper_camel_case("users"), "Users");
