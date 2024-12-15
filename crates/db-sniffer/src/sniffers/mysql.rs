@@ -6,6 +6,7 @@ use sqlx::mysql::MySqlRow;
 use sqlx::{Connection, Executor, MySqlConnection, Row};
 use std::ops::Deref;
 use std::str::FromStr;
+#[cfg(test)] use crate::test_utils::mysql::simple_existing_db_conn_params;
 
 pub struct MySQLSniffer {
     conn_params: ConnectionParams,
@@ -132,8 +133,9 @@ impl MySQLSniffer {
             FROM
                 INFORMATION_SCHEMA.KEY_COLUMN_USAGE
             WHERE
-                TABLE_NAME = '?' AND
-                COLUMN_NAME = '?'";
+                TABLE_NAME = ? 
+                AND COLUMN_NAME = ? 
+                AND REFERENCED_TABLE_NAME IS NOT NULL;";
         
         let fk_constraint = sqlx::query(fk_constraint_sql)
             .bind(table_name)
