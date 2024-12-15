@@ -1,4 +1,4 @@
-use crate::db_objects::{Column, ColumnType, GenerationType, KeyType, Table};
+use crate::db_objects::{Column, ColumnType, Database, GenerationType, KeyType, Table};
 use crate::sniffers::SniffResults;
 #[cfg(test)]
 use crate::test_utils;
@@ -74,9 +74,7 @@ impl<'a> XMLGenerator<'a> {
             };
         }
 
-        self.generate_tables_files(
-            sniff_results.database().tables(),
-        );
+        self.generate_tables_files(sniff_results.database().tables());
 
         let conf_xml = self.generate_conf_xml();
         let conf_file_path = self.src_path.join("hibernate.cfg.xml");
@@ -138,6 +136,8 @@ impl<'a> XMLGenerator<'a> {
     }
 
     fn generate_table_xml(&self, table: &Table) -> String {
+        // TODO: Generate Table class here
+
         let package = &self.package;
         let xml = format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -157,7 +157,7 @@ impl<'a> XMLGenerator<'a> {
             table.name(),
             generate_id_xml(table, package),
             generate_properties_xml(table),
-            generate_relations_xml(table),
+            generate_relations_xml(table, self.sniff_results.database(), package)
         );
 
         return xml;
@@ -195,7 +195,7 @@ impl<'a> XMLGenerator<'a> {
 
                 result = result.add("    </id>\n");
             } else {
-                // TODO: Generate ID Class
+                // TODO: Generate ID Class here
                 result = result.add(&format!(
                     r#"    <composite-id name="{}" class="{}.{}">{}"#,
                     "id",
@@ -248,17 +248,51 @@ impl<'a> XMLGenerator<'a> {
 
         fn generate_column_xml(column: &Column) -> String {
             format!(
-                r#"<column name="{}" {}/>{}"#,
+                r#"<column name="{}"{}{}/>{}"#,
                 column.name(),
-                column.nullable().then(|| "not-null=\"true\"").unwrap_or(""),
+                column
+                    .nullable()
+                    .then(|| " not-null=\"true\"")
+                    .unwrap_or(""),
+                if let KeyType::Unique = column.key() {
+                    " unique=\"true\""
+                } else {
+                    ""
+                },
                 "\n"
             )
         }
 
-        fn generate_relations_xml(_table: &Table) -> String {
+        fn generate_relations_xml(table: &Table, database: &Database, package: &str) -> String {
             let mut result = "    <!-- Relations -->\n".to_string();
 
-            // TODO: Implement relations
+            let fks = table.fks();
+
+            #[cfg(debug_assertions)]
+            {
+                println!("Found {} columns referenced by {}", fks.len(), table.name());
+            }
+            
+            for fk in fks {
+                let table_name = fk.name();
+                let (ref_table, ref_col) =
+                    fk.reference().expect("Foreign key should have a reference");
+
+                let ref_col = database
+                    .table(&ref_table)
+                    .expect("Should exists referenced Table")
+                    .column(&ref_col)
+                    .expect("Should exists referenced Column");
+
+                result = result.add(&format!(
+                    r#"    <many-to-one name="{}" class="{}.{}" column="{}" not-null="true"/>{}"#,
+                    to_lower_camel_case(table_name),
+                    package,
+                    to_upper_camel_case(table_name),
+                    ref_col.name(),
+                    "\n"
+                ));
+            }
 
             result
         }
@@ -283,7 +317,8 @@ fn to_upper_camel_case(s: &str) -> String {
 
     name.replace_range(
         0..1,
-        name.chars().next()
+        name.chars()
+            .next()
             .unwrap()
             .to_uppercase()
             .to_string()
@@ -333,7 +368,8 @@ fn to_lower_camel_case(s: &str) -> String {
 
     name.replace_range(
         0..1,
-        name.chars().next()
+        name.chars()
+            .next()
             .unwrap()
             .to_lowercase()
             .to_string()
@@ -390,8 +426,7 @@ mod test {
         let sniff_results = trivial_sniff_results();
         let target_path = PathBuf::from("src/com/example/model");
 
-        let generator =
-            XMLGenerator::new(&sniff_results, &target_path).unwrap();
+        let generator = XMLGenerator::new(&sniff_results, &target_path).unwrap();
 
         let generated = generator.generate_table_xml(&sniff_results.database().tables()[0]);
         let expected = r#"

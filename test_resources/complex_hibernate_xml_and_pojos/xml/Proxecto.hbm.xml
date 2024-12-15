@@ -8,15 +8,16 @@
             <column name="NumProxecto" />
             <generator class="assigned" />
         </id>
-        <many-to-one name="departamento" class="POJOS.Departamento" fetch="select">
-            <column name="NumDepartControla" not-null="true" />
-        </many-to-one>
         <property name="nomeProxecto" type="string">
             <column name="NomeProxecto" length="25" not-null="true" unique="true" />
         </property>
         <property name="lugar" type="string">
             <column name="Lugar" length="25" not-null="true" />
         </property>
+        
+        <many-to-one name="departamento" class="POJOS.Departamento" fetch="select">
+            <column name="NumDepartControla" not-null="true" />
+        </many-to-one>
         <bag name="empregadoProxectos" table="EMPREGADO_PROXECTO" inverse="true" lazy="true" fetch="select" >
             <key>
                 <column name="NumProxecto" not-null="true" />

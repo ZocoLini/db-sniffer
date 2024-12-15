@@ -12,14 +12,16 @@
                 <column name="NumProxecto" />
             </key-property>
         </composite-id>
+
+        <property name="horas" type="java.lang.Integer">
+            <column name="Horas" />
+        </property>
+        
         <many-to-one name="empregado" class="POJOS.Empregado" update="false" insert="false" fetch="select">
             <column name="NSSEmpregado" length="15" not-null="true" />
         </many-to-one>
         <many-to-one name="proxecto" class="POJOS.Proxecto" update="false" insert="false" fetch="select">
             <column name="NumProxecto" not-null="true" />
         </many-to-one>
-        <property name="horas" type="java.lang.Integer">
-            <column name="Horas" />
-        </property>
     </class>
 </hibernate-mapping>

@@ -96,6 +96,10 @@ impl Table {
             })
             .collect()
     }
+    
+    pub fn column(&self, name: &str) -> Option<&Column> {
+        self.columns.iter().find(|c| c.name == name)
+    }
 }
 
 #[derive(Getters)]
@@ -109,7 +113,6 @@ pub struct Column {
     #[get = "pub"]
     key: KeyType,
     /// (table, column)
-    #[get = "pub"]
     reference: Option<(String, String)>,
 }
 
@@ -129,6 +132,10 @@ impl Column {
             key,
             reference,
         }
+    }
+    
+    pub fn reference(&self) -> Option<(&String, &String)> {
+        self.reference.as_ref().map(|(t, c)| (t, c))
     }
 }
 
@@ -150,6 +157,10 @@ impl Database {
 
     pub fn add_table(&mut self, table: Table) {
         self.tables.push(table);
+    }
+    
+    pub fn table(&self, name: &str) -> Option<&Table> {
+        self.tables.iter().find(|t| t.name == name)
     }
 }
 

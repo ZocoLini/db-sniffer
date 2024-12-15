@@ -7,18 +7,21 @@
             <column name="NumDepartamento"/>
             <generator class="increment"/>
         </id>
-        <many-to-one class="POJOS.Empregadofixo" fetch="select" name="director">
-            <column length="15" name="NSSDirector" not-null="true"/>
-        </many-to-one>
         <property name="nomeDepartamento" type="string">
             <column length="25" name="NomeDepartamento" not-null="true" unique="true"/>
         </property>
+
+        <many-to-one class="POJOS.Empregadofixo" fetch="select" name="director">
+            <column length="15" name="NSSDirector" not-null="true"/>
+        </many-to-one>
+
         <set fetch="select" inverse="true" lazy="true" name="empregados" table="EMPREGADO">
             <key>
                 <column name="NumDepartamentoPertenece"/>
             </key>
             <one-to-many class="POJOS.Empregado"/>
         </set>
+
         <idbag  name="lugares" table="LUGAR">
             <collection-id column="ID" type="java.lang.Integer" >
                 <generator class="increment"/> 

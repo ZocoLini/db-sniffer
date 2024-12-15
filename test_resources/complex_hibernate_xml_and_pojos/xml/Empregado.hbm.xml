@@ -7,12 +7,6 @@
       <column length="15" name="NSS"/>
       <generator class="assigned"/>
     </id>
-    <many-to-one class="POJOS.Empregado" fetch="select" name="supervisor">
-      <column length="15" name="NSSSupervisa"/>
-    </many-to-one>
-    <many-to-one class="POJOS.Departamento" fetch="select" name="departamento">
-      <column name="NumDepartamentoPertenece"/>
-    </many-to-one>
     <property name="nome" type="string">
       <column length="25" name="Nome" />
     </property>
@@ -22,7 +16,7 @@
     <property name="apelido2" type="string">
       <column length="25" name="Apelido2"/>
     </property>
-     <component class="POJOS.Enderezo" name="enderezo">
+    <component class="POJOS.Enderezo" name="enderezo">
       <property name="rua" type="string">
         <column length="30" name="Rua"/>
       </property>
@@ -48,6 +42,12 @@
     <property name="sexo" type="java.lang.Character">
       <column length="1" name="Sexo"/>
     </property>
+    <many-to-one class="POJOS.Empregado" fetch="select" name="supervisor">
+      <column length="15" name="NSSSupervisa"/>
+    </many-to-one>
+    <many-to-one class="POJOS.Departamento" fetch="select" name="departamento">
+      <column name="NumDepartamentoPertenece"/>
+    </many-to-one>
     <list name="familiares" table="FAMILIAR">
       <key>
         <column length="15" name="NSS_empregado" not-null="true"/>

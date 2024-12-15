@@ -14,6 +14,7 @@
         <property name="horas" type="java.lang.Integer">
             <column name="Horas" />
         </property>
+        
         <list  name="edicions" cascade="all,delete-orphan">
             <key>
                 <column name="Codigo" not-null="true"/>

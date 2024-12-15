@@ -11,15 +11,17 @@
         <column name="Numero"/>
       </key-property>
     </composite-id>
-    <many-to-one class="POJOS.Empregadofixo" fetch="select" name="empregadofixo">
-      <column length="15" name="Profesor" not-null="true"/>
-    </many-to-one>
+    
     <property name="data" type="date">
       <column length="10" name="Data"/>
     </property>
     <property name="lugar" type="string">
       <column length="25" name="Lugar"/>
     </property>
+    
+    <many-to-one class="POJOS.Empregadofixo" fetch="select" name="empregadofixo">
+      <column length="15" name="Profesor" not-null="true"/>
+    </many-to-one>
     <bag fetch="select" inverse="false" lazy="true" name="alumnos" table="EDICIONCURSO_EMPREGADO">
       <key>
         <column name="Codigo" not-null="true"/>
