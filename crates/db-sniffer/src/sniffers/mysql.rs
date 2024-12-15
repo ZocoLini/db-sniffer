@@ -1,4 +1,4 @@
-use crate::db_objects::{Column, ColumnType, Database, GenerationType, KeyType, Table};
+use crate::db_objects::{Column, ColumnId, ColumnType, Database, GenerationType, KeyType, ReferenceType, Table};
 use crate::sniffers::{DatabaseSniffer, SniffResults};
 use crate::ConnectionParams;
 use crate::Error::MissingParamError;
@@ -93,7 +93,7 @@ impl MySQLSniffer {
     }
     
     async fn introspect_column(&mut self, column: MySqlRow, table_name: &str) -> Column {
-        let field_name: &str = column.get(0);
+        let column_name: &str = column.get(0);
         let field_type: &[u8] = column.get(1);
         let field_type = String::from_utf8_lossy(field_type).to_string();
         let field_type = field_type.split("(").next().unwrap();
@@ -108,7 +108,7 @@ impl MySQLSniffer {
         {
             println!(
                 "name: {:?}, type: {:?}, nullable: {:?}, key: {:?}, default: {:?}, extra: {:?}",
-                field_name,
+                column_name,
                 field_type,
                 field_nullable,
                 field_key,
@@ -127,7 +127,8 @@ impl MySQLSniffer {
             _ => KeyType::None,
         };
 
-        let fk_constraint_sql = "SELECT
+        let references = {
+            let sql = "SELECT
                 REFERENCED_TABLE_NAME,
                 REFERENCED_COLUMN_NAME
             FROM
@@ -136,29 +137,75 @@ impl MySQLSniffer {
                 TABLE_NAME = ? 
                 AND COLUMN_NAME = ? 
                 AND REFERENCED_TABLE_NAME IS NOT NULL;";
-        
-        let fk_constraint = sqlx::query(fk_constraint_sql)
-            .bind(table_name)
-            .bind(field_name)
-            .fetch_optional(&mut self.conn)
-            .await
-            .unwrap();
-        
-        let reference = match fk_constraint {
-            Some(row) => {
-                let table_name: &str = row.get(0);
-                let column_name: &str = row.get(1);
-                Some((table_name.to_string(), column_name.to_string()))
+
+            let ref_column = sqlx::query(sql)
+                .bind(table_name)
+                .bind(column_name)
+                .fetch_optional(&mut self.conn)
+                .await
+                .unwrap();
+
+            match ref_column {
+                Some(row) => {
+                    let ref_table_name: &str = row.get(0);
+                    let ref_column_name: &str = row.get(1);
+                    
+                    #[cfg(debug_assertions)]
+                    {
+                        println!("Column {} references {} ({})", column_name, ref_table_name, ref_column_name);
+                    }
+                    
+                    // TODO: Determine the reference type
+                    
+                    Some((ColumnId::new(ref_table_name, ref_column_name), ReferenceType::Unknown))
+                }
+                None => None,
             }
-            None => None,
+        };
+        
+        let referenced_by = {
+            let mut ref_by = Vec::new();
+            
+            let sql = "SELECT
+                TABLE_NAME,
+                COLUMN_NAME
+            FROM
+                information_schema.KEY_COLUMN_USAGE
+            WHERE
+                REFERENCED_TABLE_NAME = ?
+              AND REFERENCED_COLUMN_NAME = ?;";
+            
+            let columns_ref_this = sqlx::query(sql)
+                .bind(table_name)
+                .bind(column_name)
+                .fetch_all(&mut self.conn)
+                .await
+                .unwrap();
+            
+            for column_ref_this in columns_ref_this {
+                let ref_table_name: &str = column_ref_this.get(0);
+                let ref_column_name: &str = column_ref_this.get(1);
+                
+                #[cfg(debug_assertions)]
+                {
+                    println!("Column {} is referenced by {} ({})", column_name, ref_table_name, ref_column_name);
+                }
+                
+                // TODO: Determine the reference type
+                
+                ref_by.push((ColumnId::new(ref_table_name, ref_column_name), ReferenceType::Unknown));
+            }
+
+            ref_by
         };
         
         Column::new(
-            field_name.to_string(),
+            ColumnId::new(table_name, column_name),
             ColumnType::from_str(&field_type.to_string()).unwrap(),
             field_nullable,
             key,
-            reference,
+            references,
+            referenced_by
         )
     }
 }

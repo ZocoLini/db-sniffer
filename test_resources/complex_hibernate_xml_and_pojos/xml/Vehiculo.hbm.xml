@@ -10,9 +10,7 @@
                 <param name="property">empregado</param>
             </generator>
         </id>
-        <one-to-one name="empregado" class="POJOS.Empregado" 
-                    constrained="true">
-        </one-to-one>
+
         <property name="matricula" type="string">
             <column name="Matricula" length="10" />
         </property>
@@ -25,5 +23,9 @@
         <property name="dataCompra" type="date">
             <column name="DataCompra" length="10" />
         </property>
+
+        <one-to-one name="empregado" class="POJOS.Empregado"
+                    constrained="true">
+        </one-to-one>
     </class>
 </hibernate-mapping>

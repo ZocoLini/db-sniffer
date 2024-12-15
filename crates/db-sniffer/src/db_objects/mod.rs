@@ -88,7 +88,7 @@ impl Table {
         self.columns
             .iter()
             .filter(|&c| {
-                return if let Some(_) = c.reference {
+                return if let Some(_) = c.references {
                     true
                 } else {
                     false
@@ -98,14 +98,38 @@ impl Table {
     }
     
     pub fn column(&self, name: &str) -> Option<&Column> {
-        self.columns.iter().find(|c| c.name == name)
+        self.columns.iter().find(|c| c.id.name == name)
+    }
+}
+
+pub enum ReferenceType {
+    OneToOne,
+    OneToMany,
+    ManyToOne,
+    ManyToMany,
+    Unknown,
+}
+
+#[derive(Getters)]
+pub struct ColumnId {
+    #[get = "pub"]
+    table: String,
+    #[get = "pub"]
+    name: String,
+}
+
+impl ColumnId {
+    pub fn new(table_name: &str, column_name: &str) -> Self {
+        ColumnId {
+            table: table_name.to_string(),
+            name: column_name.to_string(),
+        }
     }
 }
 
 #[derive(Getters)]
 pub struct Column {
-    #[get = "pub"]
-    name: String,
+    id: ColumnId,
     #[get = "pub"]
     r#type: ColumnType,
     #[get = "pub"]
@@ -113,29 +137,40 @@ pub struct Column {
     #[get = "pub"]
     key: KeyType,
     /// (table, column)
-    reference: Option<(String, String)>,
+    references: Option<(ColumnId, ReferenceType)>,
+    referenced_by: Vec<(ColumnId, ReferenceType)>,
 }
 
 /// References are stored as (table, column)
 impl Column {
     pub fn new(
-        name: String,
+        id: ColumnId,
         r#type: ColumnType,
         nullable: bool,
         key: KeyType,
-        reference: Option<(String, String)>,
+        references: Option<(ColumnId, ReferenceType)>,
+        referenced_by: Vec<(ColumnId, ReferenceType)>,
     ) -> Self {
         Column {
-            name,
+            id,
             r#type,
             nullable,
             key,
-            reference,
+            references,
+            referenced_by
         }
     }
     
-    pub fn reference(&self) -> Option<(&String, &String)> {
-        self.reference.as_ref().map(|(t, c)| (t, c))
+    pub fn name(&self) -> &str {
+        &self.id.name
+    }
+    
+    pub fn table(&self) -> &str {
+        &self.id.table
+    }
+    
+    pub fn reference(&self) -> Option<(&ColumnId, &ReferenceType)> {
+        self.references.as_ref().map(|(t, c)| (t, c))
     }
 }
 
@@ -161,6 +196,12 @@ impl Database {
     
     pub fn table(&self, name: &str) -> Option<&Table> {
         self.tables.iter().find(|t| t.name == name)
+    }
+    
+    pub fn column(&self, column_id: &ColumnId) -> Option<&Column> {
+        self.tables
+            .iter()
+            .find_map(|t| t.column(&column_id.name))
     }
 }
 

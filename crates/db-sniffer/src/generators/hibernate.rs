@@ -1,4 +1,6 @@
-use crate::db_objects::{Column, ColumnType, Database, GenerationType, KeyType, Table};
+use crate::db_objects::{
+    Column, ColumnType, Database, GenerationType, KeyType, ReferenceType, Table,
+};
 use crate::sniffers::SniffResults;
 #[cfg(test)]
 use crate::test_utils;
@@ -7,6 +9,7 @@ use crate::test_utils::mysql::trivial_sniff_results;
 use std::cmp::PartialEq;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
+use std::ptr::null;
 use std::{env, fs};
 
 pub struct AnnotatedClassGenerator;
@@ -150,6 +153,7 @@ impl<'a> XMLGenerator<'a> {
 {}
 {}
 {}
+{}
   </class>
 </hibernate-mapping>
         "#,
@@ -157,14 +161,15 @@ impl<'a> XMLGenerator<'a> {
             table.name(),
             generate_id_xml(table, package),
             generate_properties_xml(table),
-            generate_relations_xml(table, self.sniff_results.database(), package)
+            generate_references_to_xml(table, package),
+            generate_referenced_by_xml(table, package)
         );
 
         return xml;
 
         fn generate_id_xml(table: &Table, package: &str) -> String {
             let id_columns = table.ids();
-            let mut result = "    <!-- Id -->\n".to_string();
+            let mut result = "    <!-- Id -->".to_string();
 
             if id_columns.is_empty() {
                 return result;
@@ -172,59 +177,56 @@ impl<'a> XMLGenerator<'a> {
 
             if id_columns.len() == 1 {
                 let id = id_columns[0];
-                result = result.add(&format!(
-                    r#"    <id name="{}" type="{}">{}"#,
-                    to_lower_camel_case(id.name()),
-                    column_type_to_hibernate_type(id.r#type()),
-                    "\n"
-                ));
-
-                result = result.add(&format!("      {}", &generate_column_xml(id)));
-
-                match id.key() {
+                let gen_class = match id.key() {
                     KeyType::Primary(a) => match a {
-                        GenerationType::None => {
-                            result = result.add("      <generator class=\"assigned\"/>\n");
-                        }
-                        GenerationType::AutoIncrement => {
-                            result = result.add("      <generator class=\"identity\"/>\n");
-                        }
+                        GenerationType::None => "assigned",
+                        GenerationType::AutoIncrement => "identity",
                     },
                     _ => panic!("This seccion should not be reached"),
-                }
+                };
 
-                result = result.add("    </id>\n");
+                result = result.add(&format!(
+                    r#"
+    <id name="{}" type="{}">
+      {}
+      <generator class="{}"/>
+    </id>"#,
+                    to_lower_camel_case(id.name()),
+                    column_type_to_hibernate_type(id.r#type()),
+                    &generate_column_xml(id),
+                    gen_class
+                ));
             } else {
                 // TODO: Generate ID Class here
                 result = result.add(&format!(
-                    r#"    <composite-id name="{}" class="{}.{}">{}"#,
+                    r#"
+    <composite-id name="{}" class="{}.{}">"#,
                     "id",
                     package,
                     to_upper_camel_case(&format!("{}Id", table.name())),
-                    "\n"
                 ));
 
                 for id_column in id_columns {
                     result = result.add(&format!(
-                        r#"      <key-property name="{}" type="{}">{}"#,
+                        r#"
+      <key-property name="{}" type="{}">
+        {}
+      </key-property>
+"#,
                         to_lower_camel_case(id_column.name()),
                         column_type_to_hibernate_type(id_column.r#type()),
-                        "\n"
+                        &generate_column_xml(id_column)
                     ));
-
-                    result = result.add(&format!("        {}", &generate_column_xml(id_column)));
-
-                    result = result.add("      </key-property>\n");
                 }
 
-                result = result.add("    </composite-id>\n");
+                result = result.add("    </composite-id>");
             }
 
             result
         }
 
         fn generate_properties_xml(table: &Table) -> String {
-            let mut result = "    <!-- Properties -->\n".to_string();
+            let mut result = "\n    <!-- Properties -->".to_string();
 
             for column in table.columns() {
                 if let KeyType::Primary(_) = column.key() {
@@ -232,15 +234,14 @@ impl<'a> XMLGenerator<'a> {
                 }
 
                 result = result.add(&format!(
-                    r#"    <property name="{}" type="{}">{}"#,
+                    r#"
+    <property name="{}" type="{}">
+      {}
+    </property>"#,
                     to_lower_camel_case(column.name()),
                     column_type_to_hibernate_type(column.r#type()),
-                    "\n"
+                    &generate_column_xml(column)
                 ));
-
-                result = result.add(&format!("      {}", &generate_column_xml(column)));
-
-                result = result.add("    </property>\n");
             }
 
             result
@@ -248,7 +249,7 @@ impl<'a> XMLGenerator<'a> {
 
         fn generate_column_xml(column: &Column) -> String {
             format!(
-                r#"<column name="{}"{}{}/>{}"#,
+                r#"<column name="{}"{}{}/>"#,
                 column.name(),
                 column
                     .nullable()
@@ -258,13 +259,12 @@ impl<'a> XMLGenerator<'a> {
                     " unique=\"true\""
                 } else {
                     ""
-                },
-                "\n"
+                }
             )
         }
 
-        fn generate_relations_xml(table: &Table, database: &Database, package: &str) -> String {
-            let mut result = "    <!-- Relations -->\n".to_string();
+        fn generate_references_to_xml(table: &Table, package: &str) -> String {
+            let mut result = "\n    <!-- References -->".to_string();
 
             let fks = table.fks();
 
@@ -272,29 +272,138 @@ impl<'a> XMLGenerator<'a> {
             {
                 println!("Found {} columns referenced by {}", fks.len(), table.name());
             }
-            
-            for fk in fks {
-                let table_name = fk.name();
-                let (ref_table, ref_col) =
-                    fk.reference().expect("Foreign key should have a reference");
 
-                let ref_col = database
-                    .table(&ref_table)
-                    .expect("Should exists referenced Table")
-                    .column(&ref_col)
-                    .expect("Should exists referenced Column");
+            for col in fks {
+                let (ref_col, ref_type) = col
+                    .reference()
+                    .expect("Foreign key should have a reference");
 
-                result = result.add(&format!(
-                    r#"    <many-to-one name="{}" class="{}.{}" column="{}" not-null="true"/>{}"#,
-                    to_lower_camel_case(table_name),
-                    package,
-                    to_upper_camel_case(table_name),
-                    ref_col.name(),
-                    "\n"
-                ));
+                match ref_type {
+                    ReferenceType::OneToOne => {
+                        result.push_str(&format!(
+                            r#"    <one-to-one name="{}" class="{}.{}" cascade="all" lazy="false" />"#,
+                            to_lower_camel_case(ref_col.name()),
+                            package,
+                            to_upper_camel_case(ref_col.name())
+                        ));
+                    }
+                    ReferenceType::OneToMany => {
+                        result.push_str(&format!(
+                            r#"
+    <bag name="{}" table="{}" lazy="true" fetch="select">
+      <key column="{}" />
+      <one-to-many class="{}.{}" />
+    </bag>"#,
+                            to_lower_camel_case(ref_col.name()),
+                            table.name(),
+                            ref_col.name(),
+                            package,
+                            to_upper_camel_case(ref_col.name())
+                        ));
+                    }
+                    ReferenceType::ManyToOne => {
+                        result.push_str(&format!(
+                            r#"    <many-to-one name="{}" class="{}.{}" column="{}" />"#,
+                            to_lower_camel_case(ref_col.name()),
+                            package,
+                            to_upper_camel_case(ref_col.name()),
+                            ref_col.name()
+                        ));
+                    }
+                    ReferenceType::ManyToMany | ReferenceType::Unknown => {
+                        result = result.add(&format!(
+                            r#"
+    <set name="{}s" table="{}" lazy="true" fetch="select">
+      <key>
+        {}
+      </key>
+      <many-to-many class="{}.{}" />
+    </set>
+    "#,
+                            to_lower_camel_case(ref_col.table()),
+                            ref_col.table(),
+                            generate_column_xml(col),
+                            package,
+                            to_upper_camel_case(ref_col.table()),
+                        ));
+                    }
+                }
             }
 
             result
+        }
+
+        #[allow(unused)]
+        fn generate_referenced_by_xml(table: &Table, package: &str) -> String {
+            let mut result = "\n    <!-- Referenced by -->".to_string();
+
+            result
+        }
+
+        fn generate_relation_xml(
+            ref_type: ReferenceType,
+            col: &Column,
+            ref_col: &Column,
+            package: &str,
+        ) -> String {
+            let ref_table_name = ref_col.table();
+            let ref_col_name = ref_col.name();
+
+            match ref_type {
+                ReferenceType::OneToOne => {
+                    format!(
+                        r#"    <one-to-one name="{}" class="{}.{}" lazy="true" />"#,
+                        to_lower_camel_case(ref_col_name),
+                        package,
+                        to_upper_camel_case(ref_col_name)
+                    )
+                }
+                ReferenceType::OneToMany => {
+                    format!(
+                        r#"
+    <bag name="{}" table="{}" lazy="true" fetch="select">
+      <key>
+        {}
+      </key>
+      <one-to-many class="{}.{}" />
+    </bag>"#,
+                        to_lower_camel_case(ref_table_name),
+                        ref_table_name,
+                        generate_column_xml(ref_col),
+                        package,
+                        to_upper_camel_case(ref_table_name)
+                    )
+                }
+                ReferenceType::ManyToOne => {
+                    format!(
+                        r#"
+    <many-to-one name="{}" class="{}.{}" fetch="select">
+      {}
+    </many-to-one>"#,
+                        to_lower_camel_case(ref_table_name),
+                        package,
+                        to_upper_camel_case(ref_table_name),
+                        generate_column_xml(col)
+                    )
+                }
+                ReferenceType::ManyToMany | ReferenceType::Unknown => {
+                    format!(
+                        r#"
+    <bag name="{}s" table="{}" lazy="true" fetch="select">
+      <key>
+        {}
+      </key>
+      <many-to-many class="{}.{}" />
+    </bag>
+    "#,
+                        to_lower_camel_case(ref_table_name),
+                        ref_table_name,
+                        generate_column_xml(ref_col),
+                        package,
+                        to_upper_camel_case(ref_table_name),
+                    )
+                }
+            }
         }
     }
 }
@@ -448,7 +557,8 @@ mod test {
             <column name="name" />
         </property>
         
-        <!-- Relations -->
+        <!-- References -->
+        <!-- Referenced by -->
     </class>
 </hibernate-mapping>
         "#;

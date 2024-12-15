@@ -1,4 +1,4 @@
-use crate::db_objects::{Column, ColumnType, Database, GenerationType, KeyType, Table};
+use crate::db_objects::{Column, ColumnId, ColumnType, Database, GenerationType, KeyType, Table};
 use crate::sniffers::SniffResults;
 use crate::ConnectionParams;
 use std::str::FromStr;
@@ -15,18 +15,20 @@ pub fn not_existing_db_conn_params() -> ConnectionParams {
 pub fn trivial_sniff_results() -> SniffResults {
     let columns = vec![
         Column::new(
-            "id".to_string(),
+            ColumnId::new("users", "id"),
             ColumnType::Integer,
             false,
             KeyType::Primary(GenerationType::None),
             None,
+            Vec::new(),
         ),
         Column::new(
-            "name".to_string(),
+            ColumnId::new("users", "name"),
             ColumnType::Text,
             false,
             KeyType::None,
             None,
+            Vec::new(),
         ),
     ];
 
