@@ -1,6 +1,4 @@
-use crate::db_objects::{
-    Column, ColumnType, Database, GenerationType, KeyType, ReferenceType, Table,
-};
+use crate::db_objects::{Column, ColumnType, GenerationType, KeyType, ReferenceType, Table};
 use crate::sniffers::SniffResults;
 #[cfg(test)]
 use crate::test_utils;
@@ -9,7 +7,6 @@ use crate::test_utils::mysql::trivial_sniff_results;
 use std::cmp::PartialEq;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
-use std::ptr::null;
 use std::{env, fs};
 
 pub struct AnnotatedClassGenerator;
