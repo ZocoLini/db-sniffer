@@ -154,10 +154,13 @@ impl MySQLSniffer {
                     {
                         println!("Column {} references {} ({})", column_name, ref_table_name, ref_column_name);
                     }
+
+                    let ref_type = self.introspect_ref_type(
+                        &ColumnId::new(table_name, column_name),
+                        &ColumnId::new(ref_table_name, ref_column_name)
+                    ).await;
                     
-                    // TODO: Determine the reference type
-                    
-                    Some((ColumnId::new(ref_table_name, ref_column_name), ReferenceType::Unknown))
+                    Some((ColumnId::new(ref_table_name, ref_column_name), ref_type))
                 }
                 None => None,
             }
@@ -191,9 +194,12 @@ impl MySQLSniffer {
                     println!("Column {} is referenced by {} ({})", column_name, ref_table_name, ref_column_name);
                 }
                 
-                // TODO: Determine the reference type
+                let ref_type = self.introspect_ref_type(
+                    &ColumnId::new(ref_table_name, ref_column_name),
+                    &ColumnId::new(table_name, column_name),
+                ).await;
                 
-                ref_by.push((ColumnId::new(ref_table_name, ref_column_name), ReferenceType::Unknown));
+                ref_by.push((ColumnId::new(ref_table_name, ref_column_name), ref_type));
             }
 
             ref_by
@@ -207,6 +213,11 @@ impl MySQLSniffer {
             references,
             referenced_by
         )
+    }
+    
+    async fn introspect_ref_type(&self, from_col: &ColumnId, to_col: &ColumnId) -> ReferenceType
+    {
+        ReferenceType::Unknown
     }
 }
 
