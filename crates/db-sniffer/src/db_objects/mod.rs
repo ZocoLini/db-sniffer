@@ -97,6 +97,19 @@ impl Table {
             .collect()
     }
     
+    pub fn ref_by(&self) -> Vec<(&Column, (&ColumnId, &ReferenceType))>
+    {
+        let mut result = Vec::new();
+
+        for column in self.columns.iter() {
+            for (id, r#type) in column.referenced_by.iter() {
+                result.push((column, (id, r#type)))
+            }
+        }
+        
+        result
+    }
+    
     pub fn column(&self, name: &str) -> Option<&Column> {
         self.columns.iter().find(|c| c.id.name == name)
     }

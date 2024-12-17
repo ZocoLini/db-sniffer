@@ -1,4 +1,4 @@
-use crate::db_objects::{Column, ColumnType, GenerationType, KeyType, ReferenceType, Table};
+use crate::db_objects::{Column, ColumnId, ColumnType, GenerationType, KeyType, ReferenceType, Table};
 use crate::sniffers::SniffResults;
 #[cfg(test)]
 use crate::test_utils;
@@ -275,58 +275,9 @@ impl<'a> XMLGenerator<'a> {
                     .reference()
                     .expect("Foreign key should have a reference");
 
-                match ref_type {
-                    ReferenceType::OneToOne => {
-                        result.push_str(&format!(
-                            r#"    <one-to-one name="{}" class="{}.{}" cascade="all" lazy="false" />"#,
-                            to_lower_camel_case(ref_col.name()),
-                            package,
-                            to_upper_camel_case(ref_col.name())
-                        ));
-                    }
-                    ReferenceType::OneToMany => {
-                        result.push_str(&format!(
-                            r#"
-    <bag name="{}" table="{}" lazy="true" fetch="select">
-      <key column="{}" />
-      <one-to-many class="{}.{}" />
-    </bag>"#,
-                            to_lower_camel_case(ref_col.name()),
-                            table.name(),
-                            ref_col.name(),
-                            package,
-                            to_upper_camel_case(ref_col.name())
-                        ));
-                    }
-                    ReferenceType::ManyToOne => {
-                        result.push_str(&format!(
-                            r#"    <many-to-one name="{}" class="{}.{}" column="{}" />"#,
-                            to_lower_camel_case(ref_col.name()),
-                            package,
-                            to_upper_camel_case(ref_col.name()),
-                            ref_col.name()
-                        ));
-                    }
-                    ReferenceType::ManyToMany | ReferenceType::Unknown => {
-                        result = result.add(&format!(
-                            r#"
-    <set name="{}s" table="{}" lazy="true" fetch="select">
-      <key>
-        {}
-      </key>
-      <many-to-many class="{}.{}" />
-    </set>
-    "#,
-                            to_lower_camel_case(ref_col.table()),
-                            ref_col.table(),
-                            generate_column_xml(col),
-                            package,
-                            to_upper_camel_case(ref_col.table()),
-                        ));
-                    }
-                }
+                result.push_str(&generate_relation_xml(ref_type, col, ref_col, package));
             }
-
+            
             result
         }
 
@@ -334,13 +285,19 @@ impl<'a> XMLGenerator<'a> {
         fn generate_referenced_by_xml(table: &Table, package: &str) -> String {
             let mut result = "\n    <!-- Referenced by -->".to_string();
 
+            let fks = table.ref_by();
+
+            for (col, (id, r#type)) in table.ref_by().into_iter() {
+                result.push_str(&generate_relation_xml(r#type, col, id, package));
+            }
+            
             result
         }
 
         fn generate_relation_xml(
-            ref_type: ReferenceType,
+            ref_type: &ReferenceType,
             col: &Column,
-            ref_col: &Column,
+            ref_col: &ColumnId,
             package: &str,
         ) -> String {
             let ref_table_name = ref_col.table();
@@ -366,7 +323,7 @@ impl<'a> XMLGenerator<'a> {
     </bag>"#,
                         to_lower_camel_case(ref_table_name),
                         ref_table_name,
-                        generate_column_xml(ref_col),
+                        generate_column_xml(col),
                         package,
                         to_upper_camel_case(ref_table_name)
                     )
@@ -395,7 +352,7 @@ impl<'a> XMLGenerator<'a> {
     "#,
                         to_lower_camel_case(ref_table_name),
                         ref_table_name,
-                        generate_column_xml(ref_col),
+                        generate_column_xml(col),
                         package,
                         to_upper_camel_case(ref_table_name),
                     )
