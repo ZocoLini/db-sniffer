@@ -51,6 +51,8 @@ pub enum KeyType {
 
 pub struct TableId(Vec<Column>);
 
+// TODO: References should be stored at table level
+
 #[derive(Getters)]
 pub struct Table {
     #[get = "pub"]
