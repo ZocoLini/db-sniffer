@@ -59,6 +59,12 @@ pub struct Table {
     name: String,
     #[get = "pub"]
     columns: Vec<Column>,
+    /// (this.column, other.column, relation_type)
+    #[get = "pub"]
+    references: Vec<(Column, ColumnId, Relation)>,
+    /// (this.column, other.column, relation_type)
+    #[get = "pub"]
+    referenced_by: Vec<(Column, ColumnId, Relation)>,
 }
 
 impl Table {
@@ -66,6 +72,8 @@ impl Table {
         Table {
             name: name.to_string(),
             columns: Vec::new(),
+            references: Vec::new(),
+            referenced_by: Vec::new(),
         }
     }
 
@@ -73,6 +81,14 @@ impl Table {
         self.columns.push(column);
     }
 
+    pub fn add_reference_to(&mut self, column: Column, other: ColumnId, relation: Relation) {
+        self.references.push((column, other, relation));
+    }
+    
+    pub fn add_referenced_by(&mut self, column: Column, other: ColumnId, relation: Relation) {
+        self.referenced_by.push((column, other, relation));
+    }
+    
     pub fn ids(&self) -> Vec<&Column> {
         self.columns
             .iter()
@@ -85,39 +101,13 @@ impl Table {
             })
             .collect()
     }
-
-    pub fn fks(&self) -> Vec<&Column> {
-        self.columns
-            .iter()
-            .filter(|&c| {
-                return if let Some(_) = c.references {
-                    true
-                } else {
-                    false
-                };
-            })
-            .collect()
-    }
-    
-    pub fn ref_by(&self) -> Vec<(&Column, (&ColumnId, &ReferenceType))>
-    {
-        let mut result = Vec::new();
-
-        for column in self.columns.iter() {
-            for (id, r#type) in column.referenced_by.iter() {
-                result.push((column, (id, r#type)))
-            }
-        }
-        
-        result
-    }
     
     pub fn column(&self, name: &str) -> Option<&Column> {
         self.columns.iter().find(|c| c.id.name == name)
     }
 }
 
-pub enum ReferenceType {
+pub enum Relation {
     OneToOne,
     OneToMany,
     ManyToOne,
@@ -151,9 +141,6 @@ pub struct Column {
     nullable: bool,
     #[get = "pub"]
     key: KeyType,
-    /// (table, column)
-    references: Option<(ColumnId, ReferenceType)>,
-    referenced_by: Vec<(ColumnId, ReferenceType)>,
 }
 
 /// References are stored as (table, column)
@@ -163,16 +150,12 @@ impl Column {
         r#type: ColumnType,
         nullable: bool,
         key: KeyType,
-        references: Option<(ColumnId, ReferenceType)>,
-        referenced_by: Vec<(ColumnId, ReferenceType)>,
     ) -> Self {
         Column {
             id,
             r#type,
             nullable,
             key,
-            references,
-            referenced_by
         }
     }
     
@@ -182,10 +165,6 @@ impl Column {
     
     pub fn table(&self) -> &str {
         &self.id.table
-    }
-    
-    pub fn reference(&self) -> Option<(&ColumnId, &ReferenceType)> {
-        self.references.as_ref().map(|(t, c)| (t, c))
     }
 }
 

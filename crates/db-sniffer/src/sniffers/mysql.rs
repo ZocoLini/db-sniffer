@@ -1,4 +1,4 @@
-use crate::db_objects::{Column, ColumnId, ColumnType, Database, GenerationType, KeyType, ReferenceType, Table};
+use crate::db_objects::{Column, ColumnId, ColumnType, Database, GenerationType, KeyType, Relation, Table};
 use crate::sniffers::{DatabaseSniffer, SniffResults};
 use crate::ConnectionParams;
 use crate::Error::MissingParamError;
@@ -127,6 +127,8 @@ impl MySQLSniffer {
             _ => KeyType::None,
         };
 
+        // TODO: Move this into table level
+        
         let references = {
             let sql = "SELECT
                 REFERENCED_TABLE_NAME,
@@ -210,14 +212,12 @@ impl MySQLSniffer {
             ColumnType::from_str(&field_type.to_string()).unwrap(),
             field_nullable,
             key,
-            references,
-            referenced_by
         )
     }
     
-    async fn introspect_ref_type(&self, from_col: &ColumnId, to_col: &ColumnId) -> ReferenceType
+    async fn introspect_ref_type(&self, from_col: &ColumnId, to_col: &ColumnId) -> Relation
     {
-        ReferenceType::Unknown
+        Relation::Unknown
     }
 }
 

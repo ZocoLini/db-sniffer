@@ -19,16 +19,12 @@ pub fn trivial_sniff_results() -> SniffResults {
             ColumnType::Integer,
             false,
             KeyType::Primary(GenerationType::None),
-            None,
-            Vec::new(),
         ),
         Column::new(
             ColumnId::new("users", "name"),
             ColumnType::Text,
             false,
             KeyType::None,
-            None,
-            Vec::new(),
         ),
     ];
 

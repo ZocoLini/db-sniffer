@@ -1,4 +1,4 @@
-use crate::db_objects::{Column, ColumnId, ColumnType, GenerationType, KeyType, ReferenceType, Table};
+use crate::db_objects::{Column, ColumnId, ColumnType, GenerationType, KeyType, Relation, Table};
 use crate::sniffers::SniffResults;
 #[cfg(test)]
 use crate::test_utils;
@@ -263,39 +263,32 @@ impl<'a> XMLGenerator<'a> {
         fn generate_references_to_xml(table: &Table, package: &str) -> String {
             let mut result = "\n    <!-- References -->".to_string();
 
-            let fks = table.fks();
+            let fks = table.references();
 
             #[cfg(debug_assertions)]
             {
                 println!("Found {} columns referenced by {}", fks.len(), table.name());
             }
 
-            for col in fks {
-                let (ref_col, ref_type) = col
-                    .reference()
-                    .expect("Foreign key should have a reference");
-
-                result.push_str(&generate_relation_xml(ref_type, col, ref_col, package));
+            for (col, ref_col, rel_type) in fks {
+                result.push_str(&generate_relation_xml(rel_type, col, ref_col, package));
             }
             
             result
         }
 
-        #[allow(unused)]
         fn generate_referenced_by_xml(table: &Table, package: &str) -> String {
             let mut result = "\n    <!-- Referenced by -->".to_string();
 
-            let fks = table.ref_by();
-
-            for (col, (id, r#type)) in table.ref_by().into_iter() {
-                result.push_str(&generate_relation_xml(r#type, col, id, package));
+            for (col, id, rel_type) in table.referenced_by() {
+                result.push_str(&generate_relation_xml(rel_type, col, id, package));
             }
             
             result
         }
 
         fn generate_relation_xml(
-            ref_type: &ReferenceType,
+            ref_type: &Relation,
             col: &Column,
             ref_col: &ColumnId,
             package: &str,
@@ -304,7 +297,7 @@ impl<'a> XMLGenerator<'a> {
             let ref_col_name = ref_col.name();
 
             match ref_type {
-                ReferenceType::OneToOne => {
+                Relation::OneToOne => {
                     format!(
                         r#"    <one-to-one name="{}" class="{}.{}" lazy="true" />"#,
                         to_lower_camel_case(ref_col_name),
@@ -312,7 +305,7 @@ impl<'a> XMLGenerator<'a> {
                         to_upper_camel_case(ref_col_name)
                     )
                 }
-                ReferenceType::OneToMany => {
+                Relation::OneToMany => {
                     format!(
                         r#"
     <bag name="{}" table="{}" lazy="true" fetch="select">
@@ -328,7 +321,7 @@ impl<'a> XMLGenerator<'a> {
                         to_upper_camel_case(ref_table_name)
                     )
                 }
-                ReferenceType::ManyToOne => {
+                Relation::ManyToOne => {
                     format!(
                         r#"
     <many-to-one name="{}" class="{}.{}" fetch="select">
@@ -340,7 +333,7 @@ impl<'a> XMLGenerator<'a> {
                         generate_column_xml(col)
                     )
                 }
-                ReferenceType::ManyToMany | ReferenceType::Unknown => {
+                Relation::ManyToMany | Relation::Unknown => {
                     format!(
                         r#"
     <bag name="{}s" table="{}" lazy="true" fetch="select">
