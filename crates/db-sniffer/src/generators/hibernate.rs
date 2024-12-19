@@ -1,4 +1,6 @@
-use crate::db_objects::{Column, ColumnId, ColumnType, GenerationType, KeyType, Relation, Table};
+use crate::db_objects::{
+    Column, ColumnId, ColumnType, Database, GenerationType, KeyType, Relation, RelationType, Table,
+};
 use crate::sniffers::SniffResults;
 #[cfg(test)]
 use crate::test_utils;
@@ -158,8 +160,8 @@ impl<'a> XMLGenerator<'a> {
             table.name(),
             generate_id_xml(table, package),
             generate_properties_xml(table),
-            generate_references_to_xml(table, package),
-            generate_referenced_by_xml(table, package)
+            generate_references_to_xml(table, package, self.sniff_results.database()),
+            generate_referenced_by_xml(table, package, self.sniff_results.database())
         );
 
         return xml;
@@ -167,7 +169,7 @@ impl<'a> XMLGenerator<'a> {
         fn generate_id_xml(table: &Table, package: &str) -> String {
             let id_columns = table.ids();
             let mut result = "    <!-- Id -->".to_string();
-
+            
             if id_columns.is_empty() {
                 return result;
             }
@@ -179,7 +181,7 @@ impl<'a> XMLGenerator<'a> {
                         GenerationType::None => "assigned",
                         GenerationType::AutoIncrement => "identity",
                     },
-                    _ => panic!("This seccion should not be reached"),
+                    _ => panic!("This section should not be reached"),
                 };
 
                 result = result.add(&format!(
@@ -260,7 +262,7 @@ impl<'a> XMLGenerator<'a> {
             )
         }
 
-        fn generate_references_to_xml(table: &Table, package: &str) -> String {
+        fn generate_references_to_xml(table: &Table, package: &str, database: &Database) -> String {
             let mut result = "\n    <!-- References -->".to_string();
 
             let fks = table.references();
@@ -270,34 +272,35 @@ impl<'a> XMLGenerator<'a> {
                 println!("Found {} columns referenced by {}", fks.len(), table.name());
             }
 
-            for (col, ref_col, rel_type) in fks {
-                result.push_str(&generate_relation_xml(rel_type, col, ref_col, package));
+            for relation in fks {
+                result.push_str(&generate_relation_xml(relation, package, database));
             }
-            
+
             result
         }
 
-        fn generate_referenced_by_xml(table: &Table, package: &str) -> String {
+        fn generate_referenced_by_xml(table: &Table, package: &str, database: &Database) -> String {
             let mut result = "\n    <!-- Referenced by -->".to_string();
 
-            for (col, id, rel_type) in table.referenced_by() {
-                result.push_str(&generate_relation_xml(rel_type, col, id, package));
+            for relation in table.referenced_by() {
+                result.push_str(&generate_relation_xml(relation, package, database));
             }
-            
+
             result
         }
 
         fn generate_relation_xml(
-            ref_type: &Relation,
-            col: &Column,
-            ref_col: &ColumnId,
+            relation: &Relation,
             package: &str,
+            database: &Database,
         ) -> String {
-            let ref_table_name = ref_col.table();
-            let ref_col_name = ref_col.name();
+            let ref_table_name = relation.to()[0].table();
+            let ref_col_name = relation.to()[0].name();
 
-            match ref_type {
-                Relation::OneToOne => {
+            let col = database.column(&relation.from()[0]).expect("Should exists");
+
+            match relation.r#type() {
+                RelationType::OneToOne => {
                     format!(
                         r#"    <one-to-one name="{}" class="{}.{}" lazy="true" />"#,
                         to_lower_camel_case(ref_col_name),
@@ -305,7 +308,7 @@ impl<'a> XMLGenerator<'a> {
                         to_upper_camel_case(ref_col_name)
                     )
                 }
-                Relation::OneToMany => {
+                RelationType::OneToMany => {
                     format!(
                         r#"
     <bag name="{}" table="{}" lazy="true" fetch="select">
@@ -321,7 +324,7 @@ impl<'a> XMLGenerator<'a> {
                         to_upper_camel_case(ref_table_name)
                     )
                 }
-                Relation::ManyToOne => {
+                RelationType::ManyToOne => {
                     format!(
                         r#"
     <many-to-one name="{}" class="{}.{}" fetch="select">
@@ -333,7 +336,7 @@ impl<'a> XMLGenerator<'a> {
                         generate_column_xml(col)
                     )
                 }
-                Relation::ManyToMany | Relation::Unknown => {
+                RelationType::ManyToMany | RelationType::Unknown => {
                     format!(
                         r#"
     <bag name="{}s" table="{}" lazy="true" fetch="select">

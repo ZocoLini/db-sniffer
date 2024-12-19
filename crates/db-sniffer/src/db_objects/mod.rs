@@ -59,12 +59,10 @@ pub struct Table {
     name: String,
     #[get = "pub"]
     columns: Vec<Column>,
-    /// (this.column, other.column, relation_type)
     #[get = "pub"]
-    references: Vec<(Column, ColumnId, Relation)>,
-    /// (this.column, other.column, relation_type)
+    references: Vec<Relation>,
     #[get = "pub"]
-    referenced_by: Vec<(Column, ColumnId, Relation)>,
+    referenced_by: Vec<Relation>,
 }
 
 impl Table {
@@ -81,14 +79,14 @@ impl Table {
         self.columns.push(column);
     }
 
-    pub fn add_reference_to(&mut self, column: Column, other: ColumnId, relation: Relation) {
-        self.references.push((column, other, relation));
+    pub fn add_reference_to(&mut self, relation: Relation) {
+        self.references.push(relation);
     }
-    
-    pub fn add_referenced_by(&mut self, column: Column, other: ColumnId, relation: Relation) {
-        self.referenced_by.push((column, other, relation));
+
+    pub fn add_referenced_by(&mut self, relation: Relation) {
+        self.referenced_by.push(relation);
     }
-    
+
     pub fn ids(&self) -> Vec<&Column> {
         self.columns
             .iter()
@@ -101,18 +99,38 @@ impl Table {
             })
             .collect()
     }
-    
+
     pub fn column(&self, name: &str) -> Option<&Column> {
         self.columns.iter().find(|c| c.id.name == name)
     }
 }
 
-pub enum Relation {
+pub enum RelationType {
     OneToOne,
     OneToMany,
     ManyToOne,
     ManyToMany,
     Unknown,
+}
+
+#[derive(Getters)]
+pub struct Relation {
+    #[get = "pub"]
+    from: Vec<ColumnId>,
+    #[get = "pub"]
+    to: Vec<ColumnId>,
+    #[get = "pub"]
+    r#type: RelationType,
+}
+
+impl Relation {
+    pub fn new(from: Vec<ColumnId>, to: Vec<ColumnId>, r#type: RelationType) -> Self {
+        if from.len() == to.len() {
+            panic!("Invalid relation. |From columns| != |To columns|")
+        }
+
+        Relation { from, to, r#type }
+    }
 }
 
 #[derive(Getters)]
@@ -145,12 +163,7 @@ pub struct Column {
 
 /// References are stored as (table, column)
 impl Column {
-    pub fn new(
-        id: ColumnId,
-        r#type: ColumnType,
-        nullable: bool,
-        key: KeyType,
-    ) -> Self {
+    pub fn new(id: ColumnId, r#type: ColumnType, nullable: bool, key: KeyType) -> Self {
         Column {
             id,
             r#type,
@@ -158,11 +171,11 @@ impl Column {
             key,
         }
     }
-    
+
     pub fn name(&self) -> &str {
         &self.id.name
     }
-    
+
     pub fn table(&self) -> &str {
         &self.id.table
     }
@@ -187,15 +200,13 @@ impl Database {
     pub fn add_table(&mut self, table: Table) {
         self.tables.push(table);
     }
-    
+
     pub fn table(&self, name: &str) -> Option<&Table> {
         self.tables.iter().find(|t| t.name == name)
     }
-    
+
     pub fn column(&self, column_id: &ColumnId) -> Option<&Column> {
-        self.tables
-            .iter()
-            .find_map(|t| t.column(&column_id.name))
+        self.tables.iter().find_map(|t| t.column(&column_id.name))
     }
 }
 
