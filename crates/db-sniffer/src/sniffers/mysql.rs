@@ -1,12 +1,15 @@
-use crate::db_objects::{Column, ColumnId, ColumnType, Database, GenerationType, KeyType, Relation, RelationType, Table};
+use crate::db_objects::{
+    Column, ColumnId, ColumnType, Database, GenerationType, KeyType, Relation, RelationType, Table,
+};
 use crate::sniffers::{DatabaseSniffer, SniffResults};
+#[cfg(test)]
+use crate::test_utils::mysql::simple_existing_db_conn_params;
 use crate::ConnectionParams;
 use crate::Error::MissingParamError;
 use sqlx::mysql::MySqlRow;
 use sqlx::{Connection, Executor, MySqlConnection, Row};
 use std::ops::Deref;
 use std::str::FromStr;
-#[cfg(test)] use crate::test_utils::mysql::simple_existing_db_conn_params;
 
 pub struct MySQLSniffer {
     conn_params: ConnectionParams,
@@ -91,7 +94,7 @@ impl MySQLSniffer {
 
         let references = {
             let mut relations: Vec<Relation> = Vec::new();
-            
+
             let sql = "SELECT
                 REFERENCED_TABLE_NAME,
                 REFERENCED_COLUMN_NAME,
@@ -115,29 +118,34 @@ impl MySQLSniffer {
 
                 #[cfg(debug_assertions)]
                 {
-                    println!("Column {} references {} ({})", column_name, ref_table_name, ref_column_name);
+                    println!(
+                        "Column {} references {} ({})",
+                        column_name, ref_table_name, ref_column_name
+                    );
                 }
 
-                let rel_type = self.introspect_ref_type(
-                    &ColumnId::new(table_name, column_name),
-                    &ColumnId::new(ref_table_name, ref_column_name)
-                ).await;
-
                 let from = ColumnId::new(table_name, column_name);
-                let to = ColumnId::new(ref_table_name, ref_column_name); 
-                
-                relations.push(Relation::new(vec![from], vec![to], rel_type));
+                let to = ColumnId::new(ref_table_name, ref_column_name);
+
+                let from = vec![from];
+                let to = vec![to];
+
+                let rel_type = self.introspect_rel_type(&from, &to, true).await;
+
+                relations.push(Relation::new(from, to, rel_type));
             }
 
             relations
         };
 
-        references.into_iter().for_each(|rel: Relation| { table.add_reference_to(rel)});
-        
+        references
+            .into_iter()
+            .for_each(|rel: Relation| table.add_reference_to(rel));
+
         let referenced_by = {
             let mut relations = Vec::new();
             let ref_table_name = table_name;
-            
+
             let sql = "SELECT
                 TABLE_NAME,
                 COLUMN_NAME,
@@ -160,28 +168,33 @@ impl MySQLSniffer {
 
                 #[cfg(debug_assertions)]
                 {
-                    println!("Column {} is referenced by {} ({})", ref_column_name, table_name, column_name);
+                    println!(
+                        "Column {} is referenced by {} ({})",
+                        ref_column_name, table_name, column_name
+                    );
                 }
 
-                let rel_type = self.introspect_ref_type(
-                    &ColumnId::new(table_name, column_name),
-                    &ColumnId::new(ref_table_name, ref_column_name),
-                ).await;
-
                 let from = ColumnId::new(table_name, column_name);
-                let to = ColumnId::new(table_name, ref_column_name);
-                
-                relations.push(Relation::new(vec![from], vec![to], rel_type));
+                let to = ColumnId::new(ref_table_name, ref_column_name);
+
+                let from = vec![from];
+                let to = vec![to];
+
+                let rel_type = self.introspect_rel_type(&from, &to, false).await;
+
+                relations.push(Relation::new(from, to, rel_type));
             }
 
             relations
         };
 
-        referenced_by.into_iter().for_each(|rel: Relation| { table.add_referenced_by(rel)});
-        
+        referenced_by
+            .into_iter()
+            .for_each(|rel: Relation| table.add_referenced_by(rel));
+
         table
     }
-    
+
     async fn introspect_column(&mut self, column: MySqlRow, table_name: &str) -> Column {
         let column_name: &str = column.get(0);
         let field_type: &[u8] = column.get(1);
@@ -216,7 +229,7 @@ impl MySQLSniffer {
             "UNI" => KeyType::Unique,
             _ => KeyType::None,
         };
-        
+
         Column::new(
             ColumnId::new(table_name, column_name),
             ColumnType::from_str(&field_type.to_string()).unwrap(),
@@ -224,10 +237,48 @@ impl MySQLSniffer {
             key,
         )
     }
-    
-    async fn introspect_ref_type(&self, from_col: &ColumnId, to_col: &ColumnId) -> RelationType
-    {
-        RelationType::Unknown
+
+    async fn introspect_rel_type(
+        &mut self,
+        from: &Vec<ColumnId>,
+        to: &Vec<ColumnId>,
+        rel_owner: bool,
+    ) -> RelationType {
+        // TODO: Make this work for multiple columns reference
+        let from_table = from[0].table();
+        let to_table = to[0].table();
+
+        let from_col = from[0].name();
+        let to_col = to[0].name();
+        
+        let sql = format!(
+            r#"
+        select count(*) 
+            from {from_table} f inner join {to_table} t on f.{from_col} = t.{to_col}
+            group by t.{to_col};"#,
+        );
+        
+        let rows = sqlx::query(&sql)
+            .fetch_all(&mut self.conn)
+            .await
+            .expect("Shouldn`t fail");
+        
+        if rows.is_empty() { return RelationType::Unknown; }
+
+        let mut is_one_to_one = true;
+        
+        for row in rows {
+            let count: i32 = row.get(0);
+            if count != 1 { is_one_to_one = false; break; }
+        }
+
+        if is_one_to_one { return RelationType::OneToOne }
+        
+        if rel_owner {
+            RelationType::ManyToOne
+        } else {
+            RelationType::OneToMany
+        }
     }
 }
 

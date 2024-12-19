@@ -1,5 +1,5 @@
 use crate::db_objects::{
-    Column, ColumnId, ColumnType, Database, GenerationType, KeyType, Relation, RelationType, Table,
+    Column, ColumnType, Database, GenerationType, KeyType, Relation, RelationType, Table,
 };
 use crate::sniffers::SniffResults;
 #[cfg(test)]
@@ -273,7 +273,7 @@ impl<'a> XMLGenerator<'a> {
             }
 
             for relation in fks {
-                result.push_str(&generate_relation_xml(relation, package, database));
+                result.push_str(&generate_relation_xml(relation, package, database, true));
             }
 
             result
@@ -283,7 +283,7 @@ impl<'a> XMLGenerator<'a> {
             let mut result = "\n    <!-- Referenced by -->".to_string();
 
             for relation in table.referenced_by() {
-                result.push_str(&generate_relation_xml(relation, package, database));
+                result.push_str(&generate_relation_xml(relation, package, database, false));
             }
 
             result
@@ -293,6 +293,7 @@ impl<'a> XMLGenerator<'a> {
             relation: &Relation,
             package: &str,
             database: &Database,
+            rel_owner: bool
         ) -> String {
             let ref_table_name = relation.to()[0].table();
             let ref_col_name = relation.to()[0].name();
@@ -302,10 +303,11 @@ impl<'a> XMLGenerator<'a> {
             match relation.r#type() {
                 RelationType::OneToOne => {
                     format!(
-                        r#"    <one-to-one name="{}" class="{}.{}" lazy="true" />"#,
+                        r#"
+    <one-to-one name="{}" class="{}.{}" lazy="proxy" />"#,
                         to_lower_camel_case(ref_col_name),
                         package,
-                        to_upper_camel_case(ref_col_name)
+                        to_upper_camel_case(ref_table_name)
                     )
                 }
                 RelationType::OneToMany => {
