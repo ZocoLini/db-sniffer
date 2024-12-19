@@ -125,7 +125,7 @@ pub struct Relation {
 
 impl Relation {
     pub fn new(from: Vec<ColumnId>, to: Vec<ColumnId>, r#type: RelationType) -> Self {
-        if from.len() == to.len() {
+        if from.len() != to.len() {
             panic!("Invalid relation. |From columns| != |To columns|")
         }
 
