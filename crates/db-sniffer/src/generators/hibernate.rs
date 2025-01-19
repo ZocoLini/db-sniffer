@@ -89,6 +89,21 @@ impl<'a> XMLGenerator<'a> {
     fn generate_conf_xml(&self) -> String {
         let conn_params = self.sniff_results.conn_params();
 
+        let mapping_files = self
+            .sniff_results
+            .database()
+            .tables()
+            .iter()
+            .map(|t| {
+                format!(
+                    r#"<mapping resource="{}/{}.hbm.xml" />"#,
+                    self.package.replace(".", "/"),
+                    to_upper_camel_case(t.name())
+                )
+            })
+            .collect::<Vec<String>>()
+            .join("\n         ");
+
         format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE hibernate-configuration PUBLIC 
@@ -107,20 +122,19 @@ impl<'a> XMLGenerator<'a> {
 
         <property name="hibernate.format_sql">true</property>
 
-        <property name="hibernate.hbm2ddl.auto">none</property>
+        <property name="hibernate.hbm2ddl.auto">vaalidate</property>
    
         <!-- Mapping files -->
-        {}
+        {mapping_files}
     </session-factory>
 
 </hibernate-configuration>
             "#,
-            conn_params.host().clone().unwrap(),
+            conn_params.host().as_ref().unwrap(),
             conn_params.port().unwrap(),
-            conn_params.dbname().clone().unwrap(),
-            conn_params.user().clone().unwrap(),
-            conn_params.password().clone().unwrap(),
-            ""
+            conn_params.dbname().as_ref().unwrap(),
+            conn_params.user().as_ref().unwrap(),
+            conn_params.password().as_ref().unwrap(),
         )
     }
 
@@ -169,7 +183,7 @@ impl<'a> XMLGenerator<'a> {
         fn generate_id_xml(table: &Table, package: &str) -> String {
             let id_columns = table.ids();
             let mut result = "    <!-- Id -->".to_string();
-            
+
             if id_columns.is_empty() {
                 return result;
             }
@@ -293,7 +307,7 @@ impl<'a> XMLGenerator<'a> {
             relation: &Relation,
             package: &str,
             database: &Database,
-            rel_owner: bool
+            rel_owner: bool,
         ) -> String {
             let ref_table_name = relation.to()[0].table();
             let ref_col_name = relation.to()[0].name();
@@ -446,10 +460,12 @@ fn get_java_package_name(path: &Path) -> Option<String> {
 
     let mut current = path;
 
-    while current.file_name().unwrap().to_str().unwrap() != "src" {
-        package = current.file_name().unwrap().to_str().unwrap().to_string() + "." + &package;
+    let mut current_file_name = current.file_name().unwrap().to_str().unwrap();
+    while current_file_name != "src" && current_file_name != "java" {
+        package = current_file_name.to_string() + "." + &package;
 
         current = current.parent().unwrap();
+        current_file_name = current.file_name().unwrap().to_str().unwrap();
     }
 
     package = package.trim_end_matches('.').to_string();
@@ -461,7 +477,7 @@ fn get_java_src_root(path: &Path) -> Option<PathBuf> {
     let mut current = path;
 
     while current.parent().is_some() {
-        if current.ends_with("src") {
+        if current.ends_with("src") || current.ends_with("java") {
             return Some(PathBuf::from(current));
         }
 
@@ -543,7 +559,7 @@ mod test {
                 .await;
 
         let target_path =
-            PathBuf::from(env::var("TEST_DIR").unwrap()).join("src/com/example/model");
+            PathBuf::from(env::var("TEST_DIR").unwrap()).join("src/main/java/com/example/model");
 
         let generator = XMLGenerator::new(&sniff_results, &target_path).unwrap();
 
@@ -578,6 +594,11 @@ mod test {
         let package = get_java_package_name(&path);
 
         assert_eq!(package, Some("com.example.model".to_string()));
+
+        let path = PathBuf::from("/home/user/projects/my_project/src/main/java/com/example/model");
+        let package = get_java_package_name(&path);
+
+        assert_eq!(package, Some("com.example.model".to_string()));
     }
 
     #[tokio::test]
@@ -588,6 +609,16 @@ mod test {
         assert_eq!(
             src,
             Some(PathBuf::from("/home/user/projects/my_project/src"))
+        );
+
+        let path = PathBuf::from("/home/user/projects/my_project/src/main/java/com/example/model");
+        let src = get_java_src_root(&path);
+
+        assert_eq!(
+            src,
+            Some(PathBuf::from(
+                "/home/user/projects/my_project/src/main/java"
+            ))
         );
     }
 }
