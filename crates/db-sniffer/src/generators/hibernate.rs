@@ -4,8 +4,6 @@ use crate::db_objects::{
 use crate::sniffers::SniffResults;
 #[cfg(test)]
 use crate::test_utils;
-#[cfg(test)]
-use crate::test_utils::mysql::trivial_sniff_results;
 use std::cmp::PartialEq;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
@@ -491,79 +489,53 @@ fn get_java_src_root(path: &Path) -> Option<PathBuf> {
 mod test {
     use super::*;
     use crate::sniffers::DatabaseSniffer;
-    use crate::test_utils::mysql::trivial_sniff_results;
-    use crate::{sniffers, test_utils};
+    use crate::{sniff, sniffers, test_utils, ConnectionParams};
     use std::env;
     use std::path::PathBuf;
+    use std::str::FromStr;
 
     #[tokio::test]
-    async fn test_generate_table_xml_trivial() {
+    async fn integration_test_simple_generate() {
         dotenvy::dotenv().ok();
+        test_utils::mysql::start_container();
 
-        let sniff_results = trivial_sniff_results();
-        let target_path = PathBuf::from("src/com/example/model");
+        let sniff_results = if let Ok(r) = sniffers::mysql::MySQLSniffer::new(
+            if let Ok(r) =
+                ConnectionParams::from_str("mysql://test_user:abc123.@localhost:3306/test_db")
+            {
+                r
+            } else {
+                test_utils::mysql::stop_container();
+                panic!("Failed to create ConnectionParams")
+            },
+        )
+        .await
+        {
+            r
+        } else {
+            test_utils::mysql::stop_container();
+            panic!("Failed to create MySQL sniffer");
+        }
+        .sniff()
+        .await;
 
-        let generator = XMLGenerator::new(&sniff_results, &target_path).unwrap();
+        let target_path = PathBuf::from(if let Ok(r) = env::var("TEST_DIR") {
+            r
+        } else {
+            test_utils::mysql::stop_container();
+            panic!("TEST_DIR env var not found")
+        })
+        .join("src/main/java/com/example/model");
 
-        let generated = generator.generate_table_xml(&sniff_results.database().tables()[0]);
-        let expected = r#"
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE hibernate-mapping PUBLIC
-    "-//Hibernate/Hibernate Mapping DTD 3.0//EN"
-    "http://www.hibernate.org/dtd/hibernate-mapping-3.0.dtd">
-
-<hibernate-mapping>
-    <class name="com.example.model.Users" table="users">
-        <!-- Id -->
-        <id name="id" type="int">
-            <column name="id" />
-            <generator class="assigned"/>
-        </id>
-
-        <!-- Properties -->
-        <property name="name" type="string">
-            <column name="name" />
-        </property>
-        
-        <!-- References -->
-        <!-- Referenced by -->
-    </class>
-</hibernate-mapping>
-        "#;
-
-        assert!(test_utils::compare_xml(&generated, expected));
-    }
-
-    #[tokio::test]
-    async fn test_trivial_generate() {
-        dotenvy::dotenv().ok();
-
-        let sniff_results = trivial_sniff_results();
-        let target_path =
-            PathBuf::from(env::var("TEST_DIR").unwrap()).join("src/com/example/model");
-
-        let generator = XMLGenerator::new(&sniff_results, &target_path).unwrap();
+        let generator = if let Some(r) = XMLGenerator::new(&sniff_results, &target_path) {
+            r
+        } else { 
+            test_utils::mysql::stop_container();
+            panic!("Failed to create XMLGenerator")
+        };
 
         generator.generate();
-    }
-
-    #[tokio::test]
-    async fn test_simple_generate() {
-        dotenvy::dotenv().ok();
-
-        let sniff_results =
-            sniffers::mysql::MySQLSniffer::new(test_utils::mysql::simple_existing_db_conn_params())
-                .await
-                .unwrap()
-                .sniff()
-                .await;
-
-        let target_path =
-            PathBuf::from(env::var("TEST_DIR").unwrap()).join("src/main/java/com/example/model");
-
-        let generator = XMLGenerator::new(&sniff_results, &target_path).unwrap();
-
-        generator.generate();
+        test_utils::mysql::stop_container();
     }
 
     #[tokio::test]

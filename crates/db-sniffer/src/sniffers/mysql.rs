@@ -2,8 +2,6 @@ use crate::db_objects::{
     Column, ColumnId, ColumnType, Database, GenerationType, KeyType, Relation, RelationType, Table,
 };
 use crate::sniffers::{DatabaseSniffer, SniffResults};
-#[cfg(test)]
-use crate::test_utils::mysql::simple_existing_db_conn_params;
 use crate::ConnectionParams;
 use crate::Error::MissingParamError;
 use sqlx::mysql::MySqlRow;
@@ -116,7 +114,7 @@ impl MySQLSniffer {
                 let ref_column_name: &str = row.get(1);
                 let column_name: &str = row.get(2);
 
-                #[cfg(debug_assertions)]
+                #[cfg(debug_assertions)] #[cfg(test)]
                 {
                     println!(
                         "Column {} references {} ({})",
@@ -250,30 +248,37 @@ impl MySQLSniffer {
 
         let from_col = from[0].name();
         let to_col = to[0].name();
-        
+
         let sql = format!(
             r#"
         select count(*) 
             from {from_table} f inner join {to_table} t on f.{from_col} = t.{to_col}
             group by t.{to_col};"#,
         );
-        
+
         let rows = sqlx::query(&sql)
             .fetch_all(&mut self.conn)
             .await
             .expect("Shouldn`t fail");
-        
-        if rows.is_empty() { return RelationType::Unknown; }
 
-        let mut is_one_to_one = true;
-        
-        for row in rows {
-            let count: i32 = row.get(0);
-            if count != 1 { is_one_to_one = false; break; }
+        if rows.is_empty() {
+            return RelationType::Unknown;
         }
 
-        if is_one_to_one { return RelationType::OneToOne }
-        
+        let mut is_one_to_one = true;
+
+        for row in rows {
+            let count: i32 = row.get(0);
+            if count != 1 {
+                is_one_to_one = false;
+                break;
+            }
+        }
+
+        if is_one_to_one {
+            return RelationType::OneToOne;
+        }
+
         if rel_owner {
             RelationType::ManyToOne
         } else {
@@ -285,7 +290,6 @@ impl MySQLSniffer {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::test_utils::mysql::simple_existing_db_conn_params;
 
     #[tokio::test]
     async fn test_mysql_sniffer() {
@@ -294,7 +298,8 @@ mod test {
 
         assert!(MySQLSniffer::new(conn_params).await.is_err());
 
-        let conn_params = simple_existing_db_conn_params();
+        let conn_params =
+            ConnectionParams::from_str("mysql://root:abc123.@10.0.2.4:3306/bdempresa").unwrap();
 
         let sniffer = MySQLSniffer::new(conn_params).await;
         assert!(sniffer.is_ok());
