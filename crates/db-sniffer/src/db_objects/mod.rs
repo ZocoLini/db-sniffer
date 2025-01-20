@@ -2,6 +2,7 @@ use getset::Getters;
 use std::cmp::PartialEq;
 use std::str::FromStr;
 
+#[derive(PartialEq)]
 pub enum ColumnType {
     Integer,
     Text,
@@ -133,7 +134,7 @@ impl Relation {
     }
 }
 
-#[derive(Getters)]
+#[derive(Getters, PartialEq)]
 pub struct ColumnId {
     #[get = "pub"]
     table: String,
@@ -150,7 +151,7 @@ impl ColumnId {
     }
 }
 
-#[derive(Getters)]
+#[derive(Getters, PartialEq)]
 pub struct Column {
     id: ColumnId,
     #[get = "pub"]

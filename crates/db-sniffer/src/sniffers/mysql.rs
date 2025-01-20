@@ -66,7 +66,10 @@ impl MySQLSniffer {
             .unwrap();
 
         for table in tables {
-            database.add_table(self.introspect_table(table.get(0)).await);
+            database.add_table(
+                self.introspect_table(&String::from_utf8_lossy(table.get(0)))
+                    .await,
+            );
         }
 
         database
@@ -78,9 +81,9 @@ impl MySQLSniffer {
         let columns = sqlx::query(format!("describe {}", table_name).as_str())
             .fetch_all(&mut self.conn)
             .await
-            .unwrap();
+            .expect("Error describing table");
 
-        #[cfg(debug_assertions)]
+        #[cfg(test)]
         {
             println!("table: {}", table_name);
         }
@@ -110,11 +113,11 @@ impl MySQLSniffer {
                 .unwrap();
 
             for row in rows {
-                let ref_table_name: &str = row.get(0);
+                let ref_table_name: &str = &String::from_utf8_lossy(row.get(0));
                 let ref_column_name: &str = row.get(1);
                 let column_name: &str = row.get(2);
 
-                #[cfg(debug_assertions)] #[cfg(test)]
+                #[cfg(test)]
                 {
                     println!(
                         "Column {} references {} ({})",
@@ -160,11 +163,11 @@ impl MySQLSniffer {
                 .unwrap();
 
             for row in rows {
-                let table_name: &str = row.get(0);
+                let table_name: &str = &String::from_utf8_lossy(row.get(0));
                 let column_name: &str = row.get(1);
                 let ref_column_name: &str = row.get(2);
 
-                #[cfg(debug_assertions)]
+                #[cfg(test)]
                 {
                     println!(
                         "Column {} is referenced by {} ({})",
@@ -205,7 +208,7 @@ impl MySQLSniffer {
         let field_default: Option<&str> = column.get(4);
         let field_extra: &str = column.get(5);
 
-        #[cfg(debug_assertions)]
+        #[cfg(test)]
         {
             println!(
                 "name: {:?}, type: {:?}, nullable: {:?}, key: {:?}, default: {:?}, extra: {:?}",

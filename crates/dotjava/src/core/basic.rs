@@ -72,6 +72,12 @@ impl Type {
     pub fn void() -> Self {
         Self::new("void".to_string(), "".to_string())
     }
+
+    pub fn package_required(&self) -> String {
+        if self.package == "" { return "".to_string(); }
+
+        format!("{}.{}", self.package, self.name)
+    }
 }
 
 impl Into<String> for Type {
@@ -101,6 +107,26 @@ impl Field {
             visibility,
             value,
         }
+    }
+
+    pub fn package_required(&self) -> String {
+        self.r#type.package_required()
+    }
+    
+    pub fn getter(&self) -> Method {
+        Method::getter(self)
+    }
+    
+    pub fn setter(&self) -> Method {
+        Method::setter(self)
+    }
+    
+    pub fn getters_setters(&self) -> Vec<Method> {
+        vec![self.getter(), self.setter()]
+    }
+    
+    pub fn into_record_field_string(self) -> String {
+        format!("{} {}", self.r#type.name, self.name)
     }
 }
 
@@ -184,6 +210,10 @@ impl Method {
             vec![(field.r#type.clone(), field_name)],
             body,
         )
+    }
+
+    pub fn package_required(&self) -> String {
+        self.r#type.package_required()
     }
 }
 

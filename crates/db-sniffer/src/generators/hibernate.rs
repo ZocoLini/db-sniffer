@@ -4,6 +4,7 @@ use crate::db_objects::{
 use crate::sniffers::SniffResults;
 #[cfg(test)]
 use crate::test_utils;
+use dotjava::{Class, Field, Method, Type, Visibility};
 use std::cmp::PartialEq;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
@@ -43,7 +44,7 @@ impl<'a> XMLGenerator<'a> {
             return None;
         };
 
-        #[cfg(debug_assertions)]
+        #[cfg(test)]
         {
             println!("Detected package name: {package}");
             println!(
@@ -120,7 +121,7 @@ impl<'a> XMLGenerator<'a> {
 
         <property name="hibernate.format_sql">true</property>
 
-        <property name="hibernate.hbm2ddl.auto">vaalidate</property>
+        <property name="hibernate.hbm2ddl.auto">validate</property>
    
         <!-- Mapping files -->
         {mapping_files}
@@ -144,8 +145,27 @@ impl<'a> XMLGenerator<'a> {
                 .join(format!("{}.hbm.xml", to_upper_camel_case(table.name())));
 
             fs::File::create(&table_file_path).unwrap();
-
             fs::write(table_file_path, table_xml).unwrap();
+
+            //
+
+            let table_java = self.generate_table_java(table);
+            let table_java_file_path = self
+                .target_path
+                .join(format!("{}.java", to_upper_camel_case(table.name())));
+
+            fs::File::create(&table_java_file_path).unwrap();
+            fs::write(table_java_file_path, table_java).unwrap();
+            
+            if table.ids().len() > 1 {
+                let composite_id_java = self.generate_composite_id(table);
+                let composite_id_java_file_path = self
+                    .target_path
+                    .join(format!("{}Id.java", to_upper_camel_case(table.name())));
+
+                fs::File::create(&composite_id_java_file_path).unwrap();
+                fs::write(composite_id_java_file_path, composite_id_java).unwrap();
+            }
         }
     }
 
@@ -279,7 +299,7 @@ impl<'a> XMLGenerator<'a> {
 
             let fks = table.references();
 
-            #[cfg(debug_assertions)]
+            #[cfg(test)]
             {
                 println!("Found {} columns referenced by {}", fks.len(), table.name());
             }
@@ -370,6 +390,66 @@ impl<'a> XMLGenerator<'a> {
             }
         }
     }
+
+    fn generate_table_java(&self, table: &Table) -> String {
+        let package = &self.package;
+        let class_name = to_upper_camel_case(table.name());
+
+        let table_id = table.ids();
+
+        let fields: Vec<Field> = if table_id.len() == 1 {
+            table.columns().iter().map(|c| generate_field(c)).collect()
+        } else {
+            let mut fields: Vec<Field> = table
+                .columns()
+                .iter()
+                .filter(|c| table_id.contains(c))
+                .map(|c| generate_field(c))
+                .collect();
+
+            fields.push(Field::new(
+                "id".to_string(),
+                Type::new(format!("{}Id", class_name), "".to_string()),
+                Some(Visibility::Private),
+                None,
+            ));
+
+            fields
+        };
+
+        let methods = fields
+            .iter()
+            .map(|f| f.getters_setters())
+            .flatten()
+            .collect();
+
+        // TODO: Generate references
+        
+        let java_class = Class::new(class_name.clone(), package.clone(), fields, methods);
+
+        java_class.into()
+    }
+
+    fn generate_composite_id(&self, table: &Table) -> String {
+        let package = &self.package;
+        let class_name = to_upper_camel_case(table.name());
+        
+        let fields: Vec<Field> = table
+            .ids()
+            .iter()
+            .map(|c| generate_field(c))
+            .collect();
+        
+        let methods = fields
+            .iter()
+            .map(|f| f.getters_setters())
+            .flatten()
+            .collect();
+        
+        let java_class = Class::new(format!("{}Id", class_name), package.clone(), fields, methods);
+        
+        java_class.into()
+    }
 }
 
 fn column_type_to_hibernate_type(column_type: &ColumnType) -> String {
@@ -382,6 +462,19 @@ fn column_type_to_hibernate_type(column_type: &ColumnType) -> String {
         ColumnType::DateTime => "timestamp".to_string(),
         ColumnType::Time => "time".to_string(),
         ColumnType::Float | ColumnType::Double | ColumnType::Decimal => "double".to_string(),
+    }
+}
+
+fn column_type_to_java_type(column_type: &ColumnType) -> Type {
+    match column_type {
+        ColumnType::Integer => Type::integer(),
+        ColumnType::Text => Type::string(),
+        ColumnType::Blob => Type::new("byte[]".to_string(), "".to_string()),
+        ColumnType::Boolean => Type::boolean(),
+        ColumnType::Date => Type::new("LocalDate".to_string(), "java.time".to_string()),
+        ColumnType::DateTime => Type::new("LocalDateTime".to_string(), "java.time".to_string()),
+        ColumnType::Time => Type::new("LocalTime".to_string(), "java.time".to_string()),
+        ColumnType::Float | ColumnType::Double | ColumnType::Decimal => Type::double(),
     }
 }
 
@@ -485,18 +578,34 @@ fn get_java_src_root(path: &Path) -> Option<PathBuf> {
     None
 }
 
+fn generate_field(column: &Column) -> Field {
+    let field_name = to_lower_camel_case(column.name());
+    let field_type = column_type_to_java_type(column.r#type());
+
+    Field::new(field_name, field_type, Some(Visibility::Private), None)
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::sniffers::DatabaseSniffer;
     use crate::{sniff, sniffers, test_utils, ConnectionParams};
-    use std::env;
     use std::path::PathBuf;
     use std::str::FromStr;
+    use std::{env, path};
 
     #[tokio::test]
     async fn integration_test_simple_generate() {
         dotenvy::dotenv().ok();
+
+        let test_dir = if let Ok(r) = env::var("TEST_DIR") {
+            r
+        } else {
+            panic!("TEST_DIR env var not found")
+        };
+
+        fs::remove_dir_all(&test_dir).expect("Should empty tyhe test dir");
+
         test_utils::mysql::start_container();
 
         let sniff_results = if let Ok(r) = sniffers::mysql::MySQLSniffer::new(
@@ -519,23 +628,20 @@ mod test {
         .sniff()
         .await;
 
-        let target_path = PathBuf::from(if let Ok(r) = env::var("TEST_DIR") {
-            r
-        } else {
-            test_utils::mysql::stop_container();
-            panic!("TEST_DIR env var not found")
-        })
-        .join("src/main/java/com/example/model");
+        let target_path =
+            PathBuf::from(format!("{test_dir}/{}", "src/main/java/com/example/model"));
 
         let generator = if let Some(r) = XMLGenerator::new(&sniff_results, &target_path) {
             r
-        } else { 
+        } else {
             test_utils::mysql::stop_container();
             panic!("Failed to create XMLGenerator")
         };
 
         generator.generate();
         test_utils::mysql::stop_container();
+
+        // Validate using the generated files and mvn
     }
 
     #[tokio::test]
