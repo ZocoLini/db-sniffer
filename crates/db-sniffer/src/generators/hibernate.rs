@@ -4,7 +4,7 @@ use crate::db_objects::{
 use crate::sniffers::SniffResults;
 #[cfg(test)]
 use crate::test_utils;
-use dotjava::{Class, Field, Method, Type, Visibility};
+use dotjava::{Class, Field, Type, Visibility};
 use std::cmp::PartialEq;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
@@ -156,7 +156,7 @@ impl<'a> XMLGenerator<'a> {
 
             fs::File::create(&table_java_file_path).unwrap();
             fs::write(table_java_file_path, table_java).unwrap();
-            
+
             if table.ids().len() > 1 {
                 let composite_id_java = self.generate_composite_id(table);
                 let composite_id_java_file_path = self
@@ -397,7 +397,9 @@ impl<'a> XMLGenerator<'a> {
 
         let table_id = table.ids();
 
-        let fields: Vec<Field> = if table_id.len() == 1 {
+        // Generating basic fields based on columns
+
+        let mut fields: Vec<Field> = if table_id.len() == 1 {
             table.columns().iter().map(|c| generate_field(c)).collect()
         } else {
             let mut fields: Vec<Field> = table
@@ -417,14 +419,41 @@ impl<'a> XMLGenerator<'a> {
             fields
         };
 
+        // Adding Fields based on relations
+        table.references().iter().for_each(|r| {
+            // TODO: Investigate if the to() and from() are correct
+            let ref_table_name = r.to()[0].table();
+            let ref_col_name = r.from()[0].name();
+            
+            let field_name = to_lower_camel_case(ref_col_name);
+            let field_type = Type::new(to_upper_camel_case(ref_table_name), package.clone());
+
+            let field = gen_rel_field(r.r#type(), ref_table_name, field_name, field_type);
+
+            fields.push(field);
+        });
+
+        table.referenced_by().iter().for_each(|r| {
+            // TODO: Investigate if the to() and from() are correct
+            let ref_table_name = r.from()[0].table();
+            let ref_col_name = r.to()[0].name(); 
+
+            let field_name = to_lower_camel_case(ref_col_name);
+            let field_type = Type::new(to_upper_camel_case(ref_table_name), package.clone());
+
+            let field = gen_rel_field(r.r#type(), ref_table_name, field_name, field_type);
+
+            fields.push(field);
+        });
+
+        // Adding setters and getters
+
         let methods = fields
             .iter()
             .map(|f| f.getters_setters())
             .flatten()
             .collect();
 
-        // TODO: Generate references
-        
         let java_class = Class::new(class_name.clone(), package.clone(), fields, methods);
 
         java_class.into()
@@ -433,21 +462,22 @@ impl<'a> XMLGenerator<'a> {
     fn generate_composite_id(&self, table: &Table) -> String {
         let package = &self.package;
         let class_name = to_upper_camel_case(table.name());
-        
-        let fields: Vec<Field> = table
-            .ids()
-            .iter()
-            .map(|c| generate_field(c))
-            .collect();
-        
+
+        let fields: Vec<Field> = table.ids().iter().map(|c| generate_field(c)).collect();
+
         let methods = fields
             .iter()
             .map(|f| f.getters_setters())
             .flatten()
             .collect();
-        
-        let java_class = Class::new(format!("{}Id", class_name), package.clone(), fields, methods);
-        
+
+        let java_class = Class::new(
+            format!("{}Id", class_name),
+            package.clone(),
+            fields,
+            methods,
+        );
+
         java_class.into()
     }
 }
@@ -585,14 +615,35 @@ fn generate_field(column: &Column) -> Field {
     Field::new(field_name, field_type, Some(Visibility::Private), None)
 }
 
+fn gen_rel_field(
+    rel_type: &RelationType,
+    ref_table_name: &String,
+    field_name: String,
+    field_type: Type,
+) -> Field {
+    let field = match rel_type {
+        RelationType::OneToOne | RelationType::OneToMany => {
+            Field::new(field_name, field_type, Some(Visibility::Private), None)
+        }
+        // TODO: Add support for Types with generics inside
+        RelationType::ManyToOne | RelationType::ManyToMany | RelationType::Unknown => Field::new(
+            format!("List<{}>", to_upper_camel_case(ref_table_name)),
+            Type::new("List".to_string(), "java.util".to_string()),
+            Some(Visibility::Private),
+            None,
+        ),
+    };
+    field
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
     use crate::sniffers::DatabaseSniffer;
-    use crate::{sniff, sniffers, test_utils, ConnectionParams};
+    use crate::{sniffers, test_utils, ConnectionParams};
     use std::path::PathBuf;
     use std::str::FromStr;
-    use std::{env, path};
+    use std::env;
 
     #[tokio::test]
     async fn integration_test_simple_generate() {
