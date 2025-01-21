@@ -1,9 +1,16 @@
+create table Department (
+                            id int primary key auto_increment,
+                            name varchar(255)
+);
+
 create table Person (
     id int primary key auto_increment,
     name varchar(255),
     age int,
     birthdate date,
-    created timestamp
+    created timestamp,
+    department_id int,
+    foreign key (department_id) references Department(id) # one-to-many
 );
 
 create table Address (
@@ -29,13 +36,6 @@ create table Email (
     foreign key (person_id) references Person(id) # One-to-many
 );
 
-create table Department (
-    id int primary key auto_increment,
-    name varchar(255),
-    person_id int,
-    foreign key (person_id) references Person(id) # Many-to-one
-);
-
 create table Project (
     id int primary key auto_increment,
     name varchar(255)
@@ -49,13 +49,21 @@ create table Person_Project (
     foreign key (project_id) references Project(id)
 );
 
+-- Insert Department data (many-to-one with Person)
+INSERT INTO Department (name) VALUES
+                                  ('Engineering'),
+                                  ('Marketing'),
+                                  ('Engineering'),
+                                  ('Human Resources'),
+                                  ('Finance');
+
 -- Insert Person data
-INSERT INTO Person (name, age, birthdate, created) VALUES
-                                                       ('John Smith', 35, '1989-03-15', NOW()),
-                                                       ('Emma Wilson', 28, '1996-07-22', NOW()),
-                                                       ('Michael Brown', 42, '1982-11-30', NOW()),
-                                                       ('Sarah Davis', 31, '1993-05-08', NOW()),
-                                                       ('James Johnson', 45, '1979-09-14', NOW());
+INSERT INTO Person (name, age, birthdate, created, department_id) VALUES
+                                                       ('John Smith', 35, '1989-03-15', NOW(), 1),
+                                                       ('Emma Wilson', 28, '1996-07-22', NOW(), 2),
+                                                       ('Michael Brown', 42, '1982-11-30', NOW(), 2),
+                                                       ('Sarah Davis', 31, '1993-05-08', NOW(), 3),
+                                                       ('James Johnson', 45, '1979-09-14', NOW(), 4);
 
 -- Insert Address data (one-to-one with Person)
 INSERT INTO Address (street, city, postal_code, person_id) VALUES
@@ -84,14 +92,6 @@ INSERT INTO Email (email, person_id) VALUES
                                          ('michael.b@work.com', 3),
                                          ('sarah.davis@email.com', 4),
                                          ('james.johnson@email.com', 5);
-
--- Insert Department data (many-to-one with Person)
-INSERT INTO Department (name, person_id) VALUES
-                                             ('Engineering', 1),
-                                             ('Marketing', 2),
-                                             ('Engineering', 3),
-                                             ('Human Resources', 4),
-                                             ('Finance', 5);
 
 -- Insert Project data
 INSERT INTO Project (name) VALUES

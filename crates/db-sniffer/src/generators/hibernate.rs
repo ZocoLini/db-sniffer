@@ -264,6 +264,10 @@ impl<'a> XMLGenerator<'a> {
                     continue;
                 }
 
+                if KeyType::Foreign == *column.key() {
+                    continue;
+                }
+
                 result = result.add(&format!(
                     r#"
     <property name="{}" type="{}">
@@ -327,17 +331,24 @@ impl<'a> XMLGenerator<'a> {
             database: &Database,
             rel_owner: bool,
         ) -> String {
-            let ref_table_name = relation.to()[0].table();
-            let ref_col_name = relation.to()[0].name();
-
-            let col = database.column(&relation.from()[0]).expect("Should exists");
+            let (ref_table_name, col) = if rel_owner {
+                (
+                    relation.to()[0].table(),
+                    database.column(&relation.from()[0]).expect("Should exists"),
+                )
+            } else {
+                (
+                    relation.from()[0].table(),
+                    database.column(&relation.to()[0]).expect("Should exists"),
+                )
+            };
 
             match relation.r#type() {
                 RelationType::OneToOne => {
                     format!(
                         r#"
     <one-to-one name="{}" class="{}.{}" lazy="proxy" />"#,
-                        to_lower_camel_case(ref_col_name),
+                        to_lower_camel_case(ref_table_name),
                         package,
                         to_upper_camel_case(ref_table_name)
                     )
@@ -345,7 +356,7 @@ impl<'a> XMLGenerator<'a> {
                 RelationType::OneToMany => {
                     format!(
                         r#"
-    <bag name="{}" table="{}" lazy="true" fetch="select">
+    <bag name="{}s" table="{}" lazy="true" fetch="select">
       <key>
         {}
       </key>
@@ -400,7 +411,12 @@ impl<'a> XMLGenerator<'a> {
         // Generating basic fields based on columns
 
         let mut fields: Vec<Field> = if table_id.len() == 1 {
-            table.columns().iter().map(|c| generate_field(c)).collect()
+            table
+                .columns()
+                .iter()
+                .filter(|c| *c.key() != KeyType::Foreign)
+                .map(|c| generate_field(c))
+                .collect()
         } else {
             let mut fields: Vec<Field> = table
                 .columns()
@@ -421,11 +437,9 @@ impl<'a> XMLGenerator<'a> {
 
         // Adding Fields based on relations
         table.references().iter().for_each(|r| {
-            // TODO: Investigate if the to() and from() are correct
             let ref_table_name = r.to()[0].table();
-            let ref_col_name = r.from()[0].name();
-            
-            let field_name = to_lower_camel_case(ref_col_name);
+
+            let field_name = to_lower_camel_case(ref_table_name);
             let field_type = Type::new(to_upper_camel_case(ref_table_name), package.clone());
 
             let field = gen_rel_field(r.r#type(), ref_table_name, field_name, field_type);
@@ -434,11 +448,9 @@ impl<'a> XMLGenerator<'a> {
         });
 
         table.referenced_by().iter().for_each(|r| {
-            // TODO: Investigate if the to() and from() are correct
             let ref_table_name = r.from()[0].table();
-            let ref_col_name = r.to()[0].name(); 
 
-            let field_name = to_lower_camel_case(ref_col_name);
+            let field_name = to_lower_camel_case(ref_table_name);
             let field_type = Type::new(to_upper_camel_case(ref_table_name), package.clone());
 
             let field = gen_rel_field(r.r#type(), ref_table_name, field_name, field_type);
@@ -617,21 +629,28 @@ fn generate_field(column: &Column) -> Field {
 
 fn gen_rel_field(
     rel_type: &RelationType,
-    ref_table_name: &String,
+    ref_table_name: &str,
     field_name: String,
     field_type: Type,
 ) -> Field {
     let field = match rel_type {
-        RelationType::OneToOne | RelationType::OneToMany => {
+        RelationType::OneToMany | RelationType::ManyToMany | RelationType::Unknown => {
+            let mut rel_type = Type::new("Set".to_string(), "java.util".to_string());
+            rel_type.add_generic(Type::new(
+                to_upper_camel_case(ref_table_name),
+                "".to_string(),
+            ));
+
+            Field::new(
+                format!("{}s", field_name),
+                rel_type,
+                Some(Visibility::Private),
+                None,
+            )
+        }
+        RelationType::OneToOne | RelationType::ManyToOne => {
             Field::new(field_name, field_type, Some(Visibility::Private), None)
         }
-        // TODO: Add support for Types with generics inside
-        RelationType::ManyToOne | RelationType::ManyToMany | RelationType::Unknown => Field::new(
-            format!("List<{}>", to_upper_camel_case(ref_table_name)),
-            Type::new("List".to_string(), "java.util".to_string()),
-            Some(Visibility::Private),
-            None,
-        ),
     };
     field
 }
@@ -641,9 +660,9 @@ mod test {
     use super::*;
     use crate::sniffers::DatabaseSniffer;
     use crate::{sniffers, test_utils, ConnectionParams};
+    use std::{env, path};
     use std::path::PathBuf;
     use std::str::FromStr;
-    use std::env;
 
     #[tokio::test]
     async fn integration_test_simple_generate() {
@@ -690,9 +709,90 @@ mod test {
         };
 
         generator.generate();
-        test_utils::mysql::stop_container();
 
-        // Validate using the generated files and mvn
+        // Creating a Maven archetype project
+        fs::write(
+            format!("{test_dir}/pom.xml"),
+            r#"<?xml version="1.0" encoding="UTF-8" ?>
+
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>mysql-db-sniffer</artifactId>
+    <version>0.0.0</version>
+
+    <properties>
+        <maven.compiler.source>22</maven.compiler.source>
+        <maven.compiler.target>22</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
+            <version>8.0.33</version>
+        </dependency>
+        <dependency>
+            <groupId>org.hibernate.orm</groupId>
+            <artifactId>hibernate-core</artifactId>
+            <version>6.6.4.Final</version>
+        </dependency>
+    </dependencies>
+</project>"#
+        ).expect("Failed to write to pom.xml");
+
+        fs::write(
+            format!("{test_dir}/src/main/java/com/example/Main.java"),
+            r#"package com.example;
+
+import org.hibernate.SessionFactory;
+import org.hibernate.cfg.Configuration;
+
+public class Main
+{
+    public static void main(String[] args)
+    {
+        Configuration configuration = new Configuration();
+        configuration.configure();
+        try (SessionFactory sessionFactory = configuration.buildSessionFactory()) { }
+    }
+}"#,
+        )
+        .expect("Failed to write to Main.java");
+
+        // Move the resources to the resources folder
+        fs::create_dir_all(format!("{test_dir}/src/main/resources/com/example/model")).unwrap();
+        target_path.read_dir().unwrap().for_each(|entry| {
+            let entry = entry.unwrap();
+            let file_name = entry.file_name();
+            let file_name = file_name.to_str().unwrap();
+            
+            if !file_name.ends_with(".hbm.xml") { return; }
+
+            let target = format!("{test_dir}/src/main/resources/com/example/model/{}", file_name);
+            
+            fs::rename(entry.path(), target).unwrap();
+        });
+        
+        path::PathBuf::from(format!("{test_dir}/{}", "src/main/java")).read_dir().unwrap().for_each(|entry| {
+            let entry = entry.unwrap();
+            let file_name = entry.file_name();
+            let file_name = file_name.to_str().unwrap();
+            
+            if !file_name.ends_with(".cfg.xml") { return; }
+
+            let target = format!("{test_dir}/src/main/resources/{}", file_name);
+
+            fs::rename(entry.path(), target).unwrap();
+        });
+        
+        // Todo: Validate using the generated files and mvn -> mvn package -> java -jar target/mysql-db-sniffer-0.0.0.jar ???
+
+        test_utils::mysql::stop_container();
     }
 
     #[tokio::test]
