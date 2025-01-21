@@ -597,6 +597,7 @@ fn get_java_package_name(path: &Path) -> Option<String> {
     while current_file_name != "src" && current_file_name != "java" {
         package = current_file_name.to_string() + "." + &package;
 
+        // TODO: If file not found this will, eventually, throw an error
         current = current.parent().unwrap();
         current_file_name = current.file_name().unwrap().to_str().unwrap();
     }
