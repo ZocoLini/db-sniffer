@@ -19,18 +19,16 @@ impl Into<String> for Visibility {
 pub struct Type {
     name: String,
     package: String,
+    generics: Vec<Type>,
 }
 
 impl Type {
     pub fn new(name: String, package: String) -> Self {
-        Self { name, package }
+        Self { name, package, generics: vec![] }
     }
 
     pub fn new_primitive(name: String) -> Self {
-        Self {
-            name,
-            package: "".to_string(),
-        }
+        Self::new(name, "".to_string())
     }
 
     pub fn string() -> Self {
@@ -78,11 +76,24 @@ impl Type {
 
         format!("{}.{}", self.package, self.name)
     }
+    
+    pub fn add_generic(&mut self, generic: Type) {
+        self.generics.push(generic);
+    }
 }
 
 impl Into<String> for Type {
     fn into(self) -> String {
-        self.name
+        if self.generics.len() == 0 { return self.name; }
+        
+        let generics_string = self
+            .generics
+            .into_iter()
+            .map(|a| a.into())
+            .collect::<Vec<String>>()
+            .join(", ");
+        
+        format!("{}<{generics_string}>", self.name)
     }
 }
 
