@@ -24,10 +24,10 @@ jobs:
           path: ./downloads
 
       - name: Create GitHub Release
-        uses: gh-actions/create-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
+          files: ./downloads/*
           body: 'This is a release created from the artifacts uploaded by the Build workflow.'
           draft: false
           prerelease: false
