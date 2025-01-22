@@ -1,31 +1,58 @@
-use std::{process, thread};
 use std::time::Duration;
+use std::{process, thread};
 
-pub fn start_container(){
-    // docker build -t mysql:db-sniffer -f "mysql.dockerfile" .
+pub fn start_container() {
     // docker run --name mysql_db_sniffer -p 3306:3306 mysql:db-sniffer
 
-    let mut docker_command = process::Command::new("docker");
+    build_container();
 
-    docker_command.args(&["run", "--name", "mysql_db_sniffer", "-p", "3306:3306", "mysql:db-sniffer"]);
-
-    docker_command.spawn().expect("Failed to start MySQL container for testing");
+    process::Command::new("docker")
+        .args(&[
+            "run",
+            "--name",
+            "mysql_db_sniffer",
+            "-p",
+            "3306:3306",
+            "mysql:db-sniffer",
+        ])
+        .spawn()
+        .expect("Failed to start MySQL container for testing");
     thread::sleep(Duration::from_secs(15))
+}
+
+fn build_container() {
+    // docker build -t mysql:db-sniffer -f "mysql.dockerfile" .
+    process::Command::new("docker")
+        .current_dir(super::containers_dir())
+        .args(&[
+            "build",
+            "-t",
+            "mysql:db-sniffer",
+            "-f",
+            "mysql.dockerfile",
+            ".",
+        ])
+        .spawn()
+        .expect("Failed to build MySQL container for testing")
+        .wait()
+        .expect("Failed to wait for MySQL container to be built");
 }
 
 pub fn stop_container() {
     // docker stop mysql_db_sniffer
     // docker rm mysql_db_sniffer
 
-    let mut docker_command = process::Command::new("docker");
+    process::Command::new("docker")
+        .args(&["stop", "mysql_db_sniffer"])
+        .spawn()
+        .expect("Failed to stop MySQL container")
+        .wait()
+        .expect("Failed to wait for MySQL container to stop");
 
-    docker_command.args(&["stop", "mysql_db_sniffer"]);
-    let mut com = docker_command.spawn().expect("Failed to stop MySQL container");
-    com.wait().expect("Failed to wait for MySQL container to stop");
-
-    let mut docker_command = process::Command::new("docker");
-
-    docker_command.args(&["rm", "mysql_db_sniffer"]);
-    com = docker_command.spawn().expect("Failed to remove MySQL container");
-    com.wait().expect("Failed to wait for MySQL container to be removed");
+    process::Command::new("docker")
+        .args(&["rm", "mysql_db_sniffer"])
+        .spawn()
+        .expect("Failed to remove MySQL container")
+        .wait()
+        .expect("Failed to wait for MySQL container to be removed");
 }

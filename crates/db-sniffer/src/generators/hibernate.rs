@@ -5,9 +5,9 @@ use crate::naming;
 use crate::sniffers::SniffResults;
 use dotjava::{Class, Field, Interface, Type, Visibility};
 use std::cmp::PartialEq;
+use std::fs;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
-use std::fs;
 
 pub struct AnnotatedClassGenerator;
 
@@ -296,20 +296,21 @@ impl<'a> XMLGenerator<'a> {
         fn generate_references_to_xml(table: &Table, package: &str, database: &Database) -> String {
             let mut result = "\n    <!-- References -->".to_string();
 
-            table
-                .references()
-                .iter()
-                .for_each(|r| {
-                    if let KeyType::Primary(_) = table
-                        .column(r.from()[0].name())
-                        .expect("Should exists")
-                        .key()
-                    {
-                        result.push_str(&generate_relation_xml(r, package, database, true, false, false));
-                    } else {
-                        result.push_str(&generate_relation_xml(r, package, database, true, true, true));
-                    };
-                });
+            table.references().iter().for_each(|r| {
+                if let KeyType::Primary(_) = table
+                    .column(r.from()[0].name())
+                    .expect("Should exists")
+                    .key()
+                {
+                    result.push_str(&generate_relation_xml(
+                        r, package, database, true, false, false,
+                    ));
+                } else {
+                    result.push_str(&generate_relation_xml(
+                        r, package, database, true, true, true,
+                    ));
+                };
+            });
 
             result
         }
@@ -318,7 +319,9 @@ impl<'a> XMLGenerator<'a> {
             let mut result = "\n    <!-- Referenced by -->".to_string();
 
             table.referenced_by().iter().for_each(|r| {
-                result.push_str(&generate_relation_xml(r, package, database, false, true, true));
+                result.push_str(&generate_relation_xml(
+                    r, package, database, false, true, true,
+                ));
             });
 
             result
@@ -332,16 +335,12 @@ impl<'a> XMLGenerator<'a> {
             insert: bool,
             update: bool,
         ) -> String {
-            let (ref_table_name, col) = if rel_owner {
-                (
-                    relation.to()[0].table(),
-                    database.column(&relation.from()[0]).expect("Should exists"),
-                )
+            let col = database.column(&relation.from()[0]).expect("Should exists");
+
+            let ref_table_name = if rel_owner {
+                relation.to()[0].table()
             } else {
-                (
-                    relation.from()[0].table(),
-                    database.column(&relation.to()[0]).expect("Should exists"),
-                )
+                relation.from()[0].table()
             };
 
             match relation.r#type() {
