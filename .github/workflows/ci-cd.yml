@@ -1,0 +1,40 @@
+name: Rust CI/CD Pipeline
+
+on:
+  push:
+    branches: [master, test-actions*]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Docker Compose
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y docker-compose
+
+      - name: Run unit tests
+        run: cargo test
+
+      - name: Run integration tests
+        run: cargo test --test '*' -- --ignored
+        env:
+          DOCKER_BUILDKIT: 1
+
+      - name: Build release
+        run: cargo build --release
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: db-sniffer
+          path: target/release/
