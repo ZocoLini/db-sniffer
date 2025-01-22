@@ -102,6 +102,6 @@ fabric.properties
 ####
 
 .env
-tests/
+test_project/
 .idea/
 

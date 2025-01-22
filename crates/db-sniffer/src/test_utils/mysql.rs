@@ -10,7 +10,7 @@ pub fn start_container(){
     docker_command.args(&["run", "--name", "mysql_db_sniffer", "-p", "3306:3306", "mysql:db-sniffer"]);
     
     docker_command.spawn().expect("Failed to start MySQL container for testing");
-    thread::sleep(Duration::from_secs(15))
+    thread::sleep(Duration::from_secs(30))
 }
 
 pub fn stop_container() {

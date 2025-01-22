@@ -6,6 +6,7 @@ use getset::Getters;
 #[allow(unused)] mod sniffers;
 #[allow(unused)] pub mod generators;
 #[allow(unused)] #[cfg(test)] mod test_utils;
+mod naming;
 
 #[derive(Debug)]
 pub enum Error
