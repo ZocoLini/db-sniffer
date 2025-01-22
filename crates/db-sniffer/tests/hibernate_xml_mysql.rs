@@ -116,14 +116,14 @@ async fn integration_test_xml() {
 
 const MAIN_CONTENT: &str = r#"package com.example;
 
-import com.example.model.Person;
-import com.example.model.PersonProject;
-import com.example.model.PersonProjectId;
+import com.example.model.*;
 import org.hibernate.Session;
 import org.hibernate.SessionFactory;
 import org.hibernate.cfg.Configuration;
 
-import static org.junit.Assert.assertEquals;
+import java.util.List;
+
+import static org.junit.Assert.*;
 
 public class Main
 {
@@ -138,33 +138,117 @@ public class Main
         try
         {
             sessionFactory = configuration.buildSessionFactory();
+
+            // This method will query the database using hibernate to verify the correctness of the mapping
             session = sessionFactory.openSession();
-            Person person = (Person) session.get(Person.class, 1);
+            assertQueries(session);
+            session.close();
 
-            assertEquals("John Smith", person.getName());
-            assertEquals("Engineering", person.getDepartment().getName());
+            // This method will update the database using hibernate to verify the correctness of the mapping
+            session = sessionFactory.openSession();
+            updates(session);
+            session.close();
 
-            System.out.println("Person found and asserted");
+            // This method will query the database using hibernate to verify the correctness of the updates
+            session = sessionFactory.openSession();
+            verifyUpdates(session);
 
-            final var id = new PersonProjectId();
-
-            id.setPersonId(1);
-            id.setProjectId(1);
-
-            PersonProject personProject = (PersonProject) session.get(PersonProject.class, id);
-
-            assertEquals("John Smith", personProject.getPerson().getName());
-            assertEquals("Website Redesign", personProject.getProject().getName());
-
-            System.out.println("PersonProject found and asserted");
         }
         catch (Exception exception)
         {
             exception.printStackTrace();
-        } finally
+            fail("No exception should be thrown");
+        }
+        finally
         {
             session.close();
             sessionFactory.close();
         }
+    }
+
+    private static void assertQueries(Session session)
+    {
+        Person person = (Person) session.get(Person.class, 1);
+
+        assertEquals("John Smith", person.getName());
+        assertEquals("Engineering", person.getDepartment().getName());
+        assertEquals(2, person.getPersonProjects().size());
+
+        final var id = new PersonProjectId();
+
+        id.setPersonId(1);
+        id.setProjectId(1);
+
+        PersonProject personProject = (PersonProject) session.get(PersonProject.class, id);
+
+        assertEquals("John Smith", personProject.getPerson().getName());
+        assertEquals("Website Redesign", personProject.getProject().getName());
+
+        Department department = (Department) session.get(Department.class, 2);
+        assertEquals("Marketing", department.getName());
+        assertEquals(2, department.getPersons().size());
+
+        List<Project> project =
+                (List<Project>) session.createQuery("from Project p where p.personProjects.size = 2").list();
+        assertEquals(3, project.size());
+
+        System.out.println("All queries are correct");
+    }
+
+    private static void updates(Session session)
+    {
+        session.beginTransaction();
+
+        Person person = (Person) session.get(Person.class, 1);
+        person.setName("Test");
+        person.getAddress().setCity("Test");
+
+        List<Project> projects =
+                (List<Project>) session.createQuery("from Project p where p.personProjects.size = 2").list();
+        projects.forEach(p -> p.setName("Test"));
+
+        projects =
+                (List<Project>) session
+                        .createQuery("from Project p where p.id not in " +
+    "(select pp.project.id from PersonProject pp where pp.person.id = :personId)")
+                        .setInteger("personId", person.getId())
+                        .list();
+
+        projects.forEach(p -> {
+            PersonProject personProject = new PersonProject();
+            personProject.setPerson(person);
+            personProject.setProject(p);
+            
+            PersonProjectId id = new PersonProjectId();
+            id.setPersonId(person.getId());
+            id.setProjectId(p.getId());
+            
+            personProject.setId(id);
+            
+            session.save(personProject);
+        });
+
+        session.getTransaction().commit();
+
+        System.out.println("All updates are correct");
+    }
+
+    private static void verifyUpdates(Session session)
+    {
+        Person person = (Person) session.get(Person.class, 1);
+
+        assertEquals("Test", person.getName());
+        assertEquals("Test", person.getAddress().getCity());
+        
+        List<Project> projects =
+                (List<Project>) session
+                        .createQuery("from Project p where p.id not in " +
+    "(select pp.project.id from PersonProject pp where pp.person.id = :personId)")
+                        .setInteger("personId", person.getId())
+                        .list();
+        
+        assertEquals(0, projects.size());
+        
+        System.out.println("All updates checks are correct");
     }
 }"#;
