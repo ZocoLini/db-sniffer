@@ -17,16 +17,17 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Install Docker Compose
+      - name: Install Docker Compose y Maven
         run: |
           sudo apt-get update
           sudo apt-get install -y docker-compose
+          sudo apt-get install -y maven
 
       - name: Run unit tests
-        run: cargo test
+        run: cargo test --lib
 
       - name: Run integration tests
-        run: cargo test --test '*' -- --ignored
+        run: cargo test --test '*'
         env:
           TEST_DIR: $RUNNER_TEMP
           DOCKER_BUILDKIT: 1
