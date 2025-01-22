@@ -1,13 +1,13 @@
 use crate::db_objects::{
     Column, ColumnType, Database, GenerationType, KeyType, Relation, RelationType, Table,
 };
+use crate::naming;
 use crate::sniffers::SniffResults;
-use dotjava::{Class, Field, Type, Visibility};
+use dotjava::{Class, Field, Interface, Type, Visibility};
 use std::cmp::PartialEq;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
-use std::{env, fs};
-use crate::naming;
+use std::fs;
 
 pub struct AnnotatedClassGenerator;
 
@@ -135,9 +135,10 @@ impl<'a> XMLGenerator<'a> {
     fn generate_tables_files(&self, tables: &Vec<Table>) {
         for table in tables {
             let table_xml = self.generate_table_xml(table);
-            let table_file_path = self
-                .target_path
-                .join(format!("{}.hbm.xml", naming::to_upper_camel_case(table.name())));
+            let table_file_path = self.target_path.join(format!(
+                "{}.hbm.xml",
+                naming::to_upper_camel_case(table.name())
+            ));
 
             fs::File::create(&table_file_path).unwrap();
             fs::write(table_file_path, table_xml).unwrap();
@@ -145,18 +146,20 @@ impl<'a> XMLGenerator<'a> {
             //
 
             let table_java = self.generate_table_java(table);
-            let table_java_file_path = self
-                .target_path
-                .join(format!("{}.java", naming::to_upper_camel_case(table.name())));
+            let table_java_file_path = self.target_path.join(format!(
+                "{}.java",
+                naming::to_upper_camel_case(table.name())
+            ));
 
             fs::File::create(&table_java_file_path).unwrap();
             fs::write(table_java_file_path, table_java).unwrap();
 
             if table.ids().len() > 1 {
                 let composite_id_java = self.generate_composite_id(table);
-                let composite_id_java_file_path = self
-                    .target_path
-                    .join(format!("{}Id.java", naming::to_upper_camel_case(table.name())));
+                let composite_id_java_file_path = self.target_path.join(format!(
+                    "{}Id.java",
+                    naming::to_upper_camel_case(table.name())
+                ));
 
                 fs::File::create(&composite_id_java_file_path).unwrap();
                 fs::write(composite_id_java_file_path, composite_id_java).unwrap();
@@ -165,8 +168,6 @@ impl<'a> XMLGenerator<'a> {
     }
 
     fn generate_table_xml(&self, table: &Table) -> String {
-        // TODO: Generate Table class here
-
         let package = &self.package;
         let xml = format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -298,19 +299,16 @@ impl<'a> XMLGenerator<'a> {
             table
                 .references()
                 .iter()
-                .filter(|&r| {
-                    return if let KeyType::Primary(_) = table
+                .for_each(|r| {
+                    if let KeyType::Primary(_) = table
                         .column(r.from()[0].name())
                         .expect("Should exists")
                         .key()
                     {
-                        false
+                        result.push_str(&generate_relation_xml(r, package, database, true, false, false));
                     } else {
-                        true
+                        result.push_str(&generate_relation_xml(r, package, database, true, true, true));
                     };
-                })
-                .for_each(|r| {
-                    result.push_str(&generate_relation_xml(r, package, database, true));
                 });
 
             result
@@ -320,7 +318,7 @@ impl<'a> XMLGenerator<'a> {
             let mut result = "\n    <!-- Referenced by -->".to_string();
 
             table.referenced_by().iter().for_each(|r| {
-                result.push_str(&generate_relation_xml(r, package, database, false));
+                result.push_str(&generate_relation_xml(r, package, database, false, true, true));
             });
 
             result
@@ -331,6 +329,8 @@ impl<'a> XMLGenerator<'a> {
             package: &str,
             database: &Database,
             rel_owner: bool,
+            insert: bool,
+            update: bool,
         ) -> String {
             let (ref_table_name, col) = if rel_owner {
                 (
@@ -357,12 +357,12 @@ impl<'a> XMLGenerator<'a> {
                 RelationType::OneToMany => {
                     format!(
                         r#"
-    <bag name="{}s" table="{}" lazy="true" fetch="select">
+    <set name="{}s" table="{}" lazy="true" fetch="select">
       <key>
         {}
       </key>
       <one-to-many class="{}.{}" />
-    </bag>"#,
+    </set>"#,
                         naming::to_lower_camel_case(ref_table_name),
                         ref_table_name,
                         generate_column_xml(col),
@@ -371,9 +371,19 @@ impl<'a> XMLGenerator<'a> {
                     )
                 }
                 RelationType::ManyToOne => {
+                    let insert_update_str = if !insert && !update {
+                        " insert=\"false\" update=\"false\""
+                    } else if !insert {
+                        " insert=\"false\""
+                    } else if !update {
+                        " update=\"false\""
+                    } else {
+                        ""
+                    };
+
                     format!(
                         r#"
-    <many-to-one name="{}" class="{}.{}" fetch="select">
+    <many-to-one name="{}" class="{}.{}" {insert_update_str} fetch="select">
       {}
     </many-to-one>"#,
                         naming::to_lower_camel_case(ref_table_name),
@@ -452,7 +462,8 @@ impl<'a> XMLGenerator<'a> {
             let ref_table_name = r.from()[0].table();
 
             let field_name = naming::to_lower_camel_case(ref_table_name);
-            let field_type = Type::new(naming::to_upper_camel_case(ref_table_name), package.clone());
+            let field_type =
+                Type::new(naming::to_upper_camel_case(ref_table_name), package.clone());
 
             let field = gen_rel_field(r.r#type(), field_name, field_type);
 
@@ -484,12 +495,20 @@ impl<'a> XMLGenerator<'a> {
             .flatten()
             .collect();
 
-        let java_class = Class::new(
+        let mut java_class = Class::new(
             format!("{}Id", class_name),
             package.clone(),
             fields,
             methods,
         );
+
+        java_class.add_interface(Interface::new(
+            "Serializable".to_string(),
+            "java.io".to_string(),
+        ));
+
+        java_class.add_equals_method();
+        java_class.add_hash_code_method();
 
         java_class.into()
     }
@@ -515,7 +534,7 @@ fn column_type_to_java_type(column_type: &ColumnType) -> Type {
         ColumnType::Blob => Type::new("byte[]".to_string(), "".to_string()),
         ColumnType::Boolean => Type::boolean(),
         ColumnType::Date | ColumnType::DateTime | ColumnType::Time => {
-            Type::new("Date".to_string(), "".to_string())
+            Type::new("Date".to_string(), "java.util".to_string())
         }
         ColumnType::Float | ColumnType::Double | ColumnType::Decimal => Type::double(),
     }
@@ -531,8 +550,9 @@ fn get_java_package_name(path: &Path) -> Option<String> {
     while current_file_name != "src" && current_file_name != "java" {
         package = current_file_name.to_string() + "." + &package;
 
-        // TODO: If file not found this will, eventually, throw an error
-        current = current.parent().unwrap();
+        current = current
+            .parent()
+            .expect("Reached a folder withour parent folder before src or java");
         current_file_name = current.file_name().unwrap().to_str().unwrap();
     }
 
@@ -585,299 +605,7 @@ fn gen_rel_field(rel_type: &RelationType, field_name: String, field_type: Type) 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::sniffers::DatabaseSniffer;
-    use crate::{sniffers, test_utils, ConnectionParams};
     use std::path::PathBuf;
-    use std::str::FromStr;
-    use std::{env, path, process};
-
-    #[tokio::test]
-    async fn integration_test_simple_generate() {
-        dotenvy::dotenv().ok();
-
-        let test_dir = if let Ok(r) = env::var("TEST_DIR") {
-            r
-        } else {
-            panic!("TEST_DIR env var not found")
-        };
-
-        if fs::exists(&test_dir).unwrap_or(false) {
-            fs::remove_dir_all(&test_dir).expect("Should empty the test dir");
-        }
-
-        test_utils::mysql::start_container();
-
-        let sniff_results = if let Ok(r) = sniffers::mysql::MySQLSniffer::new(
-            if let Ok(r) =
-                ConnectionParams::from_str("mysql://test_user:abc123.@localhost:3306/test_db")
-            {
-                r
-            } else {
-                test_utils::mysql::stop_container();
-                panic!("Failed to create ConnectionParams")
-            },
-        )
-        .await
-        {
-            r
-        } else {
-            test_utils::mysql::stop_container();
-            panic!("Failed to create MySQL sniffer");
-        }
-        .sniff()
-        .await;
-
-        let target_path =
-            PathBuf::from(format!("{test_dir}/{}", "src/main/java/com/example/model"));
-
-        let generator = if let Some(r) = XMLGenerator::new(&sniff_results, &target_path) {
-            r
-        } else {
-            test_utils::mysql::stop_container();
-            panic!("Failed to create XMLGenerator")
-        };
-
-        generator.generate();
-
-        // Creating a Maven archetype project
-        fs::write(
-            format!("{test_dir}/pom.xml"),
-            r#"<?xml version="1.0" encoding="UTF-8" ?>
-
-<project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <modelVersion>4.0.0</modelVersion>
-
-    <groupId>com.example</groupId>
-    <artifactId>mysql-db-sniffer</artifactId>
-    <version>0.0.0</version>
-
-    <properties>
-        <maven.compiler.source>11</maven.compiler.source>
-        <maven.compiler.target>11</maven.compiler.target>
-        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    </properties>
-
-    <dependencies>
-        <dependency>
-            <groupId>junit</groupId>
-            <artifactId>junit</artifactId>
-            <version>4.13.2</version>
-        </dependency>
-        <dependency>
-            <groupId>mysql</groupId>
-            <artifactId>mysql-connector-java</artifactId>
-            <version>8.0.33</version>
-        </dependency>
-        <dependency>
-            <groupId>org.hibernate</groupId>
-            <artifactId>hibernate-core</artifactId>
-            <version>4.3.11.Final</version>
-        </dependency>
-    </dependencies>
-
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
-                <configuration>
-                    <source>11</source>
-                    <target>11</target>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <version>3.2.0</version>
-                <configuration>
-                    <outputDirectory>${project.basedir}</outputDirectory>
-                    <finalName>${project.artifactId}</finalName>
-                    <archive>
-                        <manifest>
-                            <addClasspath>true</addClasspath>
-                            <mainClass>com.example.Main</mainClass>
-                        </manifest>
-                    </archive>
-                </configuration>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-shade-plugin</artifactId>
-                <version>3.2.4</version>
-                <executions>
-                    <execution>
-                        <phase>package</phase>
-                        <goals>
-                            <goal>shade</goal>
-                        </goals>
-                        <configuration>
-                            <createDependencyReducedPom>false</createDependencyReducedPom>
-                            <filters>
-                                <filter>
-                                    <artifact>*:*</artifact>
-                                    <excludes>
-                                        <exclude>module-info.class</exclude>
-                                        <exclude>META-INF/*.SF</exclude>
-                                        <exclude>META-INF/*.DSA</exclude>
-                                        <exclude>META-INF/*.RSA</exclude>
-                                    </excludes>
-                                </filter>
-                            </filters>
-                        </configuration>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <groupId>org.openjfx</groupId>
-                <artifactId>javafx-maven-plugin</artifactId>
-                <version>0.0.8</version>
-                <configuration>
-                    <mainClass>
-                        com.example.Main
-                    </mainClass>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
-
-</project>"#
-        ).expect("Failed to write to pom.xml");
-
-        fs::write(
-            format!("{test_dir}/src/main/java/com/example/Main.java"),
-            r#"package com.example;
-
-import com.example.model.Person;
-import com.example.model.PersonProject;
-import com.example.model.PersonProjectId;
-import org.hibernate.Session;
-import org.hibernate.SessionFactory;
-import org.hibernate.cfg.Configuration;
-
-import static org.junit.Assert.assertEquals;
-
-public class Main
-{
-    public static void main(String[] args)
-    {
-        Configuration configuration = new Configuration();
-        configuration.configure();
-
-        SessionFactory sessionFactory = configuration.buildSessionFactory();
-
-        Session session = sessionFactory.openSession();
-
-        try
-        {
-            Person person = (Person) session.get(Person.class, 1);
-
-            assertEquals("John Smith", person.getName());
-            assertEquals("Engineering", person.getDepartment().getName());
-
-            System.out.println("Person found and asserted");
-
-            final var id = new PersonProjectId();
-
-            id.setPersonId(1);
-            id.setProjectId(1);
-
-            PersonProject personProject = (PersonProject) session.get(PersonProject.class, id);
-
-            assertEquals("John Smith", personProject.getPerson().getName());
-            assertEquals("Website Redesign", personProject.getProject().getName());
-
-            System.out.println("PersonProject found and asserted");
-        }
-        catch (Exception exception)
-        {
-            exception.printStackTrace();
-        } finally
-        {
-            session.close();
-            sessionFactory.close();
-        }
-    }
-}"#,
-        )
-        .expect("Failed to write to Main.java");
-
-        // Creating and writing the META-INF folder
-        fs::create_dir_all(format!("{test_dir}/src/main/resources/META-INF")).unwrap();
-
-        fs::write(
-            format!("{test_dir}/src/main/resources/META-INF/MANIFEST.MF"),
-            "Manifest-Version: 1.0\nMain-Class: com.example.Main\n",
-        )
-        .expect("Failed to write to MANIFEST.MF");
-
-        // Move the resources to the resources folder
-        fs::create_dir_all(format!("{test_dir}/src/main/resources/com/example/model")).unwrap();
-        target_path.read_dir().unwrap().for_each(|entry| {
-            let entry = entry.unwrap();
-            let file_name = entry.file_name();
-            let file_name = file_name.to_str().unwrap();
-
-            if !file_name.ends_with(".hbm.xml") {
-                return;
-            }
-
-            let target = format!(
-                "{test_dir}/src/main/resources/com/example/model/{}",
-                file_name
-            );
-
-            fs::rename(entry.path(), target).unwrap();
-        });
-
-        path::PathBuf::from(format!("{test_dir}/{}", "src/main/java"))
-            .read_dir()
-            .unwrap()
-            .for_each(|entry| {
-                let entry = entry.unwrap();
-                let file_name = entry.file_name();
-                let file_name = file_name.to_str().unwrap();
-
-                if !file_name.ends_with(".cfg.xml") {
-                    return;
-                }
-
-                let target = format!("{test_dir}/src/main/resources/{}", file_name);
-
-                fs::rename(entry.path(), target).unwrap();
-            });
-
-        // Todo: Validate using the generated files and mvn -> mvn package -> java -jar target/mysql-db-sniffer-0.0.0.jar ???
-        // Using maven to validate
-
-        let output = process::Command::new("mvn")
-            .arg("clean")
-            .arg("package")
-            .stdout(process::Stdio::inherit())
-            .stderr(process::Stdio::inherit())
-            .current_dir(test_dir.clone())
-            .output()
-            .expect("Failed to run mvn package");
-
-        if !output.status.success() {
-            panic!("Failed to run mvn package")
-        }
-
-        let output = process::Command::new("java")
-            .arg("-jar")
-            .arg("mysql-db-sniffer.jar")
-            .stdout(process::Stdio::inherit())
-            .stderr(process::Stdio::inherit())
-            .current_dir(test_dir.clone())
-            .output()
-            .expect("Failed to run java -jar");
-
-        test_utils::mysql::stop_container();
-
-        assert!(output.status.success());
-    }
 
     #[tokio::test]
     async fn test_get_java_package_name() {

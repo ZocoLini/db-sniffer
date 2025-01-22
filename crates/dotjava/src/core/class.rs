@@ -1,5 +1,6 @@
 use crate::{Field, Method};
 use std::collections::HashSet;
+use crate::core::interface::Interface;
 
 pub struct Class {
     name: String,
@@ -7,6 +8,7 @@ pub struct Class {
     fields: Vec<Field>,
     methods: Vec<Method>,
     imports: Vec<String>,
+    interfaces: Vec<Interface>
 }
 
 impl Class {
@@ -40,7 +42,30 @@ impl Class {
             fields,
             methods,
             imports: imports.into_iter().collect(),
+            interfaces: Vec::new()
         }
+    }
+    
+    pub fn add_equals_method(&mut self) {
+        self.imports.push("java.util.Objects".to_string());
+        self.methods.push(Method::equals(self));
+    }
+    
+    pub fn add_hash_code_method(&mut self) {
+        self.methods.push(Method::hash_code(self));
+    }
+    
+    pub fn fields(&self) -> &Vec<Field> {
+        &self.fields
+    }
+    
+    pub fn name(&self) -> &String {
+        &self.name
+    }
+    
+    pub fn add_interface(&mut self, interface: Interface) {
+        self.imports.push(interface.package_required());
+        self.interfaces.push(interface);
     }
 }
 
@@ -64,9 +89,21 @@ impl Into<String> for Class {
             methods.push_str(&format!("    {}\n", <Method as Into<String>>::into(method.into())));
         }
 
+        let implements = if self.interfaces.is_empty() {
+            "".to_string()
+        } else {
+            let interfaces = self.interfaces
+                .iter()
+                .map(|interface| interface.name().clone())
+                .collect::<Vec<String>>()
+                .join(", ");
+            
+            format!(" implements {}", interfaces)
+        };
+        
         format!(
-            "package {};\n\n{}\n\npublic class {} {{\n{}\n{}\n}}",
-            self.package, imports, self.name, fields, methods
+            "package {};\n\n{imports}\n\npublic class {}{implements} {{\n{fields}\n{methods}\n}}",
+            self.package, self.name
         )
     }
 }

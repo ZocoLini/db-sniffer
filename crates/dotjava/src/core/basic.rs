@@ -1,4 +1,5 @@
 use crate::Class;
+use std::ops::Add;
 
 #[derive(Copy, Clone)]
 pub enum Visibility {
@@ -240,11 +241,68 @@ impl Method {
     }
 
     pub fn equals(class: &Class) -> Self {
+        let mut body = String::new();
 
+        body = body.add(&format!(
+            r#"
+        if (o == null || getClass() != o.getClass()) return false;
+
+        {} that = ({}) o;
+        "#,
+            class.name(),
+            class.name()
+        ));
+
+        let fields_comp = class
+            .fields()
+            .iter()
+            .map(|field| {
+                format!(
+                    "Objects.equals(this.{}, that.{})",
+                    field.name, field.name
+                )
+            })
+            .collect::<Vec<String>>()
+            .join(" && ");
+
+        body = body.add(&format!("return {fields_comp};"));
+
+        let param = Type::new("Object".to_string(), "java.lang".to_string());
+
+        Method {
+            name: "equals".to_string(),
+            r#type: Type::new_primitive("boolean".to_string()),
+            visibility: Some(Visibility::Public),
+            parameters: vec![(param, "o".to_string())],
+            body: Some(body),
+        }
     }
 
     pub fn hash_code(class: &Class) -> Self {
+        let mut body = String::new();
 
+        body = body.add(&format!(
+            "int result = Objects.hashCode({});\n\n",
+            &class.fields()[0].name
+        ));
+
+        let fields_hash = class
+            .fields()
+            .iter()
+            .skip(1)
+            .map(|field| format!("result = 31 * result * Objects.hashCode({});", field.name))
+            .collect::<Vec<String>>()
+            .join(";\n");
+
+        body = body.add(&format!("{fields_hash}\n\nreturn result;"));
+
+        Method {
+            name: "hashCode".to_string(),
+            r#type: Type::new_primitive("int".to_string()),
+            visibility: Some(Visibility::Public),
+            parameters: vec![],
+            body: Some(body),
+        }
     }
 
     pub fn package_required(&self) -> String {

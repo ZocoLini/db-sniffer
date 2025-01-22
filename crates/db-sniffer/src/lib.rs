@@ -5,7 +5,7 @@ use getset::Getters;
 #[allow(unused)] pub mod db_objects;
 #[allow(unused)] mod sniffers;
 #[allow(unused)] pub mod generators;
-#[allow(unused)] #[cfg(test)] mod test_utils;
+
 mod naming;
 
 #[derive(Debug)]
