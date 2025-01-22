@@ -289,26 +289,3 @@ impl MySQLSniffer {
         }
     }
 }
-
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[tokio::test]
-    async fn test_mysql_sniffer() {
-        let conn_str = "mysql://root:abc123.@10.0.2.4:3306";
-        let conn_params = conn_str.parse().unwrap();
-
-        assert!(MySQLSniffer::new(conn_params).await.is_err());
-
-        let conn_params =
-            ConnectionParams::from_str("mysql://root:abc123.@10.0.2.4:3306/bdempresa").unwrap();
-
-        let sniffer = MySQLSniffer::new(conn_params).await;
-        assert!(sniffer.is_ok());
-
-        let mut sniffer = sniffer.unwrap();
-
-        let results = sniffer.sniff().await;
-    }
-}
