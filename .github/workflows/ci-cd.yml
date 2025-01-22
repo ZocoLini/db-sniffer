@@ -28,6 +28,7 @@ jobs:
       - name: Run integration tests
         run: cargo test --test '*' -- --ignored
         env:
+          TEST_DIR: $RUNNER_TEMP
           DOCKER_BUILDKIT: 1
 
       - name: Build release
