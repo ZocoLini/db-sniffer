@@ -3,16 +3,23 @@ name: Rust CI/CD Pipeline
 on:
   push:
     branches: [master, test-actions*]
+  pull_request:
+    branches:
+      - master
 
 jobs:
-  test-and-build:
+  # 1. CI: Ejecutar tests en Ubuntu
+  test:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
 
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
@@ -32,11 +39,44 @@ jobs:
           TEST_DIR: $RUNNER_TEMP
           DOCKER_BUILDKIT: 1
 
-      - name: Build release
-        run: cargo build --release
+  # 2. CD: Compilación para Windows y Linux
+  build:
+    needs: test
+    runs-on: ubuntu-latest
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v3
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
         with:
-          name: db-sniffer
-          path: target/release/
+          toolchain: stable
+
+      - name: Build release for ${{ matrix.os }}
+        run: |
+          cargo build --release --bin cli
+          mv target/release/cli target/release/sniffer
+
+      - name: Upload artifact for ${{ matrix.os }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-sniffer-${{ matrix.os }}
+          path: target/release/sniffer
+
+  # 3. CD: Despliegue (Ejemplo simple de despliegue)
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to server (placeholder)
+        run: |
+          echo "Deploying build to production server"

@@ -40,6 +40,6 @@ impl Command for Sniff {
     }
 
     fn show_usage() {
-        println!("USAGE: {} sniff -u <uri>", BIN_NAME);
+        println!("USAGE: {} sniff -u <uri> [-o <output-dir>]", BIN_NAME);
     }
 }
