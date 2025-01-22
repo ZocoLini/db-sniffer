@@ -1,3 +1,5 @@
+use crate::Class;
+
 #[derive(Copy, Clone)]
 pub enum Visibility {
     Public,
@@ -235,6 +237,14 @@ impl Method {
             vec![(field.r#type.clone(), field_name)],
             body,
         )
+    }
+
+    pub fn equals(class: &Class) -> Self {
+
+    }
+
+    pub fn hash_code(class: &Class) -> Self {
+
     }
 
     pub fn package_required(&self) -> String {
