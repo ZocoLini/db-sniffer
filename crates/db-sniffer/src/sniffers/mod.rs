@@ -1,4 +1,5 @@
 pub(crate) mod mysql;
+pub(crate) mod mssql;
 
 use crate::db_objects::{Database, Metadata};
 use crate::ConnectionParams;

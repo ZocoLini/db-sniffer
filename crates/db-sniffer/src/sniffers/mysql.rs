@@ -16,17 +16,25 @@ pub struct MySQLSniffer {
 
 impl DatabaseSniffer for MySQLSniffer {
     async fn new(params: ConnectionParams) -> Result<Self, crate::Error> {
-        // TODO: Remove the clone
-        let params_clone = params.clone();
-
-        let user = params.user.ok_or(MissingParamError("user".to_string()))?;
+        let user = params
+            .user
+            .as_ref()
+            .ok_or(MissingParamError("user".to_string()))?;
         let password = params
             .password
+            .as_ref()
             .ok_or(MissingParamError("password".to_string()))?;
-        let host = params.host.ok_or(MissingParamError("host".to_string()))?;
-        let port = params.port.ok_or(MissingParamError("port".to_string()))?;
+        let host = params
+            .host
+            .as_ref()
+            .ok_or(MissingParamError("host".to_string()))?;
+        let port = params
+            .port
+            .as_ref()
+            .ok_or(MissingParamError("port".to_string()))?;
         let dbname = params
             .dbname
+            .as_ref()
             .ok_or(MissingParamError("dbname".to_string()))?;
 
         let connection = MySqlConnection::connect(&format!(
@@ -36,7 +44,7 @@ impl DatabaseSniffer for MySQLSniffer {
         .await?;
 
         let sniffer = MySQLSniffer {
-            conn_params: params_clone,
+            conn_params: params,
             conn: connection,
         };
 

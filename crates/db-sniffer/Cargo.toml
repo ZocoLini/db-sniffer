@@ -7,9 +7,10 @@ edition = "2021"
 # mysql and sqlite support
 sqlx = { version = "0.8.2", features = ["mysql", "runtime-tokio"]}
 # mssql support
-tiberius= { version = "0.12.3" }
+tiberius= { version = "0.12.3", features = ["tokio"] }
 regex = { version = "1.11.1" }
 tokio = { workspace = true }
+tokio-util = { version = "0.7.13", features = ["compat"] }
 
 getset = { version = "0.1.3" }
 dotjava = { path = "../dotjava"}
