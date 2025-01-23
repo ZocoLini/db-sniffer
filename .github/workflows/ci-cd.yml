@@ -63,7 +63,7 @@ jobs:
       - name: Build release for ${{ matrix.os }}
         run: |
           cargo build --release --bin cli
-          mv target/release/cli target/release/sniffer-${{ matrix.os }}
+          ren target/release/cli target/release/sniffer-${{ matrix.os }}
 
       - name: Upload artifact for ${{ matrix.os }}
         uses: actions/upload-artifact@v4
