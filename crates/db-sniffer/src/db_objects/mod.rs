@@ -6,6 +6,8 @@ use std::str::FromStr;
 pub enum ColumnType {
     Integer,
     Text,
+    Char,
+    Varchar,
     Float,
     Double,
     Date,
@@ -22,7 +24,9 @@ impl FromStr for ColumnType {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "int" | "integer" => Ok(ColumnType::Integer),
-            "text" | "char" | "varchar" => Ok(ColumnType::Text),
+            "text" => Ok(ColumnType::Text),
+            "char" => Ok(ColumnType::Char),
+            "varchar" => Ok(ColumnType::Varchar),
             "float" => Ok(ColumnType::Float),
             "double" => Ok(ColumnType::Double),
             "date" => Ok(ColumnType::Date),
@@ -173,6 +177,10 @@ impl Column {
         }
     }
 
+    pub fn not_nullable(&self) -> bool {
+        !self.nullable
+    }
+    
     pub fn name(&self) -> &str {
         &self.id.name
     }

@@ -46,11 +46,10 @@ jobs:
   # 2. CD: Compilación para Windows y Linux
   build:
     needs: test
-    runs-on: ubuntu-latest
-
     strategy:
       matrix:
         os: [ ubuntu-latest, windows-latest ]
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout code

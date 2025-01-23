@@ -282,7 +282,7 @@ impl<'a> XMLGenerator<'a> {
                 r#"<column name="{}"{}{}/>"#,
                 column.name(),
                 column
-                    .nullable()
+                    .not_nullable()
                     .then(|| " not-null=\"true\"")
                     .unwrap_or(""),
                 if let KeyType::Unique = column.key() {
@@ -516,26 +516,30 @@ impl<'a> XMLGenerator<'a> {
 fn column_type_to_hibernate_type(column_type: &ColumnType) -> String {
     match column_type {
         ColumnType::Integer => "int".to_string(),
-        ColumnType::Text => "string".to_string(),
+        ColumnType::Text | ColumnType::Varchar=> "string".to_string(),
         ColumnType::Blob => "binary".to_string(),
         ColumnType::Boolean => "boolean".to_string(),
         ColumnType::Date => "date".to_string(),
         ColumnType::DateTime => "timestamp".to_string(),
         ColumnType::Time => "time".to_string(),
-        ColumnType::Float | ColumnType::Double | ColumnType::Decimal => "double".to_string(),
+        ColumnType::Double | ColumnType::Decimal => "double".to_string(),
+        ColumnType::Float => "float".to_string(),
+        ColumnType::Char => "char".to_string(),
     }
 }
 
 fn column_type_to_java_type(column_type: &ColumnType) -> Type {
     match column_type {
         ColumnType::Integer => Type::integer(),
-        ColumnType::Text => Type::string(),
+        ColumnType::Text | ColumnType::Varchar  => Type::string(),
         ColumnType::Blob => Type::new("byte[]".to_string(), "".to_string()),
         ColumnType::Boolean => Type::boolean(),
         ColumnType::Date | ColumnType::DateTime | ColumnType::Time => {
             Type::new("Date".to_string(), "java.util".to_string())
         }
-        ColumnType::Float | ColumnType::Double | ColumnType::Decimal => Type::double(),
+        ColumnType::Double | ColumnType::Decimal => Type::double(),
+        ColumnType::Float => Type::float(),
+        &ColumnType::Char => Type::character(),
     }
 }
 

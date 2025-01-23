@@ -1,6 +1,9 @@
 create table Department (
-                            id int primary key auto_increment,
-                            name varchar(255)
+    id int primary key auto_increment,
+    name varchar(255),
+    abreviation char(3),
+    type char(1),
+    constraint UQ_DEPARTMENT_ABRV unique (abreviation)
 );
 
 create table Person (
@@ -10,6 +13,8 @@ create table Person (
     birthdate date,
     created timestamp,
     department_id int,
+    salario float,
+    paga_extra double,
     foreign key (department_id) references Department(id) # one-to-many
 );
 
