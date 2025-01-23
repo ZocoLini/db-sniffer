@@ -46,6 +46,7 @@ jobs:
   # 2. CD: Compilación para Windows y Linux
   build:
     needs: test
+    if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       matrix:
         os: [ ubuntu-latest, windows-latest ]
@@ -60,11 +61,6 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Build release for Linux
-        if: matrix.os == 'ubuntu-latest'
-        run: |
-          cargo build --release --bin cli
-          mv target/release/cli target/release/sniffer-linux
 
       - name: Build release
         run: cargo build --release --bin cli
@@ -87,6 +83,7 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
 
     steps:
       - name: Checkout code
