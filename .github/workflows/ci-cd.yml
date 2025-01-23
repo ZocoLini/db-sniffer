@@ -60,10 +60,17 @@ jobs:
         with:
           toolchain: stable
 
-      - name: Build release for ${{ matrix.os }}
+      - name: Build release for Linux
+        if: matrix.os == 'ubuntu-latest'
         run: |
           cargo build --release --bin cli
-          ren target/release/cli target/release/sniffer-${{ matrix.os }}
+          mv target/release/cli target/release/sniffer-linux
+
+      - name: Build release for Windows
+        if: matrix.os == 'windows-latest'
+        run: |
+           cargo build --release --bin cli
+           mv .\target\release\cli.exe .\target\release\sniffer-windows.exe
 
       - name: Upload artifact for ${{ matrix.os }}
         uses: actions/upload-artifact@v4
