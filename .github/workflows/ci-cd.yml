@@ -66,17 +66,22 @@ jobs:
           cargo build --release --bin cli
           mv target/release/cli target/release/sniffer-linux
 
-      - name: Build release for Windows
-        if: matrix.os == 'windows-latest'
-        run: |
-           cargo build --release --bin cli
-           mv .\target\release\cli.exe .\target\release\sniffer-windows.exe
+      - name: Build release
+        run: cargo build --release --bin cli
 
-      - name: Upload artifact for ${{ matrix.os }}
+      - name: Prepare artifact
+        run: |  
+          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            mv target/release/cli target/release/sniffer-linux
+          elif [ "${{ matrix.os }}" == "windows-latest" ]; then
+            mv .\target\release\cli.exe .\target\release\sniffer-windows.exe
+          fi
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: db-sniffer-${{ matrix.os }}
-          path: target/release/sniffer-${{ matrix.os }}
+          name: ${{ matrix.os == 'ubuntu-latest' && 'sniffer-linux' || 'sniffer-windows' }}
+          path: ${{ matrix.os == 'ubuntu-latest' && 'target/release/sniffer-linux' || 'target/release/sniffer-windows.exe' }}
 
   # 3. CD: Despliegue (Ejemplo simple de despliegue)
   deploy:
