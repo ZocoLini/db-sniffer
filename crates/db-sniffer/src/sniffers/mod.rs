@@ -29,6 +29,8 @@ impl SniffResults {
     }
 }
 
+// TODO: Add trait DbIntrospector and make sniff use it to generate SniffResults. All abstract.
+
 pub trait DatabaseSniffer: Sized {
     async fn new(params: ConnectionParams) -> Result<Self, crate::Error>;
     async fn sniff(self) -> SniffResults;

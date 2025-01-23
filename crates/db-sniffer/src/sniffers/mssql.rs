@@ -273,6 +273,7 @@ impl SQLServerSniffer {
             == "YES";
         let field_default: Option<&str> = column.get(3);
 
+        // TODO: Unique columns are beeing detected as Primary Keys. EX.: Deparment table 
         let field_key = self.client.query("SELECT
             CASE
                 WHEN pk_col.column_id IS NOT NULL THEN 'PRI'  -- Primary Key
