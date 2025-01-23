@@ -112,6 +112,8 @@ async fn integration_test_xml() {
     containers::mysql::stop_container();
 
     assert!(output.status.success());
+    
+    fs::remove_dir_all(test_dir).expect("Error removing the test dir");
 }
 
 const MAIN_CONTENT: &str = r#"package com.example;
