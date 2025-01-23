@@ -61,17 +61,16 @@ jobs:
         with:
           toolchain: stable
 
-
       - name: Build release
         run: cargo build --release --bin cli
 
-      - name: Prepare artifact
-        run: |  
-          if [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-            mv target/release/cli target/release/sniffer-linux
-          elif [ "${{ matrix.os }}" == "windows-latest" ]; then
-            mv .\target\release\cli.exe .\target\release\sniffer-windows.exe
-          fi
+      - name: Prepare artifact (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: mv target/release/cli target/release/sniffer-linux
+
+      - name: Prepare artifact (Windows)
+        if: matrix.os == 'windows-latest'
+        run: mv .\target\release\cli.exe .\target\release\sniffer-windows.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
