@@ -1,19 +1,15 @@
 #!/bin/bash
-# Inicia el servidor SQL en segundo plano
+set -e
+
 /opt/mssql/bin/sqlservr &
 
 # Espera a que SQL Server esté listo
 echo "Esperando a que SQL Server se inicie..."
-until /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P StrongPassword123! -Q "SELECT 1" &>/dev/null; do
-    sleep 1
-done
+sleep 10
 
-echo "SQL Server está listo. Ejecutando script de inicialización..."
+# Ejecuta el script de inicialización
+echo "Ejecutando script de inicialización..."
+/opt/mssql-tools18/bin/sqlcmd -S "localhost" -U SA -P "D3fault&Pass" -C -d master -i /usr/config/mssql_db_creation.sql
 
-# Ejecuta el script SQL
-/opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P StrongPassword123! -d master -i /usr/config/db_creation.sql
-
-echo "Script de inicialización ejecutado correctamente."
-
-# Mantiene el contenedor en ejecución
+echo "Inicialización completada."
 wait
