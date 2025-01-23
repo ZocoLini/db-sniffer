@@ -1,4 +1,4 @@
-FROM sqlserver:latest
+FROM mysql:latest
 
 ENV MYSQL_ROOT_PASSWORD=abc123.
 ENV MYSQL_DATABASE=test_db
