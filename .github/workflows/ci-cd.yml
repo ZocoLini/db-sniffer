@@ -86,6 +86,8 @@ jobs:
           echo "Deploying build to production server"
 
   create-release:
+      permissions:
+        contents: write
       needs: build
       if: startsWith(github.ref, 'refs/tags/v')
       runs-on: ubuntu-latest
