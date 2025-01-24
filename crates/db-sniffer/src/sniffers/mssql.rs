@@ -273,25 +273,47 @@ impl SQLServerSniffer {
             == "YES";
         let field_default: Option<&str> = column.get(3);
 
-        // TODO: Unique columns are beeing detected as Primary Keys. EX.: Deparment table 
-        let field_key = self.client.query("SELECT
-            CASE
-                WHEN pk_col.column_id IS NOT NULL THEN 'PRI'  -- Primary Key
-                WHEN fk_col.constraint_object_id IS NOT NULL THEN 'FK' -- Foreign Key
-                ELSE ''
-                END
-        FROM
-            sys.columns col
-                INNER JOIN
-            sys.tables tab ON col.object_id = tab.object_id
-                LEFT JOIN
-            sys.key_constraints pk ON pk.parent_object_id = tab.object_id AND pk.type = 'PK'
-                LEFT JOIN
-            sys.index_columns pk_col ON pk_col.object_id = pk.parent_object_id AND pk_col.column_id = col.column_id
-                LEFT JOIN
-            sys.foreign_key_columns fk_col ON fk_col.parent_object_id = col.object_id AND fk_col.parent_column_id = col.column_id
-        WHERE
-            tab.name = @P1 and col.name = @P2", &[&table_name.to_string(), &column_name.to_string()])
+        // TODO: Unique columns are beeing detected as Primary Keys. EX.: Deparment table
+        let field_key = self
+            .client
+            .query(
+                "WITH KeyColumns AS (
+                    SELECT
+                        SCHEMA_NAME(t.schema_id) AS schema_name,
+                        t.name AS table_name,
+                        c.name AS column_name,
+                        CASE
+                            WHEN pk.name IS NOT NULL THEN 'PRI'
+                            WHEN uq.name IS NOT NULL THEN 'UNI'
+                            WHEN fk_col.constraint_object_id IS NOT NULL THEN 'FK'
+                            END AS key_type
+                    FROM
+                        sys.tables t
+                            JOIN
+                        sys.columns c ON c.object_id = t.object_id
+                            LEFT JOIN
+                        sys.index_columns ic ON ic.object_id = t.object_id AND ic.column_id = c.column_id
+                            LEFT JOIN
+                        sys.foreign_key_columns fk_col ON fk_col.parent_object_id = c.object_id AND fk_col.parent_column_id = c.column_id
+                            LEFT JOIN
+                        sys.indexes idx ON idx.object_id = t.object_id AND idx.index_id = ic.index_id
+                            LEFT JOIN
+                        sys.key_constraints pk ON pk.parent_object_id = t.object_id
+                            AND pk.type = 'PK'
+                            AND pk.unique_index_id = idx.index_id
+                            LEFT JOIN
+                        sys.indexes uq ON uq.object_id = t.object_id
+                            AND uq.is_unique = 1
+                            AND uq.is_primary_key = 0
+                            AND uq.index_id = ic.index_id
+                )
+                SELECT
+                    key_type
+                FROM
+                    KeyColumns
+                WHERE table_name = @P1 and column_name = @P2",
+                &[&table_name.to_string(), &column_name.to_string()],
+            )
             .await
             .expect("Error fetching key")
             .into_first_result()
@@ -302,7 +324,7 @@ impl SQLServerSniffer {
             .get(0)
             .expect("Error fetching key")
             .get(0)
-            .expect("Error fetching key");
+            .unwrap_or("NO KEY");
 
         #[cfg(test)]
         #[cfg(debug_assertions)]
@@ -343,7 +365,7 @@ impl SQLServerSniffer {
                 } else {
                     ""
                 };
-                
+
                 match auto_increment {
                     "auto_increment" => KeyType::Primary(GenerationType::AutoIncrement),
                     _ => KeyType::Primary(GenerationType::None),
@@ -353,6 +375,8 @@ impl SQLServerSniffer {
             "UNI" => KeyType::Unique,
             _ => KeyType::None,
         };
+
+        // Las PK o UQ también pueden ser FK
 
         Column::new(
             ColumnId::new(table_name, column_name),
