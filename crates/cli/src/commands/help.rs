@@ -4,6 +4,8 @@ use crate::commands::Command;
 
 pub struct Help;
 
+// TODO: Better display
+
 impl Command for Help {
     async fn execute(_flags: HashMap<String, String>) {
         let help_message = r#"

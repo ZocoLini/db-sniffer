@@ -43,13 +43,13 @@ jobs:
           TEST_DIR: $RUNNER_TEMP
           DOCKER_BUILDKIT: 1
 
-  # 2. CD: Compilación para Windows y Linux
+  # 2. CD: Compilación para Windows, Linux y MacOS
   build:
     needs: test
     if: startsWith(github.ref, 'refs/tags/v')
     strategy:
       matrix:
-        os: [ ubuntu-latest, windows-latest ]
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -68,6 +68,10 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: mv target/release/cli target/release/sniffer-linux
 
+      - name: Prepare artifact (macOS)
+        if: matrix.os == 'macos-latest'
+        run: mv target/release/cli target/release/sniffer-macos
+
       - name: Prepare artifact (Windows)
         if: matrix.os == 'windows-latest'
         run: mv .\target\release\cli.exe .\target\release\sniffer-windows.exe
@@ -75,8 +79,13 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.os == 'ubuntu-latest' && 'sniffer-linux' || 'sniffer-windows' }}
-          path: ${{ matrix.os == 'ubuntu-latest' && 'target/release/sniffer-linux' || 'target/release/sniffer-windows.exe' }}
+          name: sniffer-${{ matrix.os == 'ubuntu-latest' && 'linux' || matrix.os == 'windows-latest' && 'windows' || 'macos' }}
+          path: >
+            ${{ 
+              matrix.os == 'ubuntu-latest' && 'target/release/sniffer-linux' || 
+              matrix.os == 'windows-latest' && 'target/release/sniffer-windows.exe' || 
+              'target/release/sniffer-macos' 
+            }}
 
   # 3. CD: Despliegue (Ejemplo simple de despliegue)
   deploy:

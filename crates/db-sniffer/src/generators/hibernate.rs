@@ -102,6 +102,44 @@ impl<'a> XMLGenerator<'a> {
             .collect::<Vec<String>>()
             .join("\n         ");
 
+        // TODO: Ugly code.
+        //  Refactor.
+        //  Enum for the diferent types os supported db to avoid match strings
+        
+        let properties = match self.sniff_results.conn_params().db.as_str() {
+            "mysql" => format!(
+                r#"
+        <property name="hibernate.dialect">org.hibernate.dialect.MySQLDialect</property>
+        <property name="hibernate.connection.driver_class">com.mysql.cj.jdbc.Driver</property>
+        <property name="hibernate.connection.url">jdbc:mysql://{}:{}/{}</property>
+        <property name="hibernate.connection.username">{}</property>
+        <property name="hibernate.connection.password">{}</property>"#,
+                escape_xml_special_chars(conn_params.host().as_ref().unwrap()),
+                conn_params.port().unwrap(),
+                escape_xml_special_chars(conn_params.dbname().as_ref().unwrap()),
+                escape_xml_special_chars(conn_params.user().as_ref().unwrap()),
+                escape_xml_special_chars(conn_params.password().as_ref().unwrap()),
+            ),
+            "mssql" | "sqlserver" => format!(
+                r#"
+        <property name="hibernate.dialect">org.hibernate.dialect.SQLServerDialect</property>
+        <property name="hibernate.connection.driver_class">com.microsoft.sqlserver.jdbc.SQLServerDriver</property>
+        <property name="hibernate.connection.url">jdbc:sqlserver://{}:{};databaseName={};trustServerCertificate=true</property>
+        <property name="hibernate.connection.username">{}</property>
+        <property name="hibernate.connection.password">{}</property>"#,
+                escape_xml_special_chars(conn_params.host().as_ref().unwrap()),
+                conn_params.port().unwrap(),
+                escape_xml_special_chars(conn_params.dbname().as_ref().unwrap()),
+                escape_xml_special_chars(conn_params.user().as_ref().unwrap()),
+                escape_xml_special_chars(conn_params.password().as_ref().unwrap()),
+            ),
+            _ => {
+                println!("Unknown database type: {}", conn_params.db);
+                "".to_string()
+            }
+
+        };
+
         format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE hibernate-configuration PUBLIC 
@@ -110,11 +148,7 @@ impl<'a> XMLGenerator<'a> {
 
 <hibernate-configuration>
     <session-factory>
-        <property name="hibernate.dialect">org.hibernate.dialect.MySQLDialect</property>
-        <property name="hibernate.connection.driver_class">com.mysql.cj.jdbc.Driver</property>
-        <property name="hibernate.connection.url">jdbc:mysql://{}:{}/{}</property>
-        <property name="hibernate.connection.username">{}</property>
-        <property name="hibernate.connection.password">{}</property>
+        {properties}
 
         <property name="hibernate.hbm2ddl.auto">validate</property>
    
@@ -123,12 +157,7 @@ impl<'a> XMLGenerator<'a> {
     </session-factory>
 
 </hibernate-configuration>
-            "#,
-            conn_params.host().as_ref().unwrap(),
-            conn_params.port().unwrap(),
-            conn_params.dbname().as_ref().unwrap(),
-            conn_params.user().as_ref().unwrap(),
-            conn_params.password().as_ref().unwrap(),
+            "#
         )
     }
 
@@ -516,7 +545,7 @@ impl<'a> XMLGenerator<'a> {
 fn column_type_to_hibernate_type(column_type: &ColumnType) -> String {
     match column_type {
         ColumnType::Integer => "int".to_string(),
-        ColumnType::Text | ColumnType::Varchar=> "string".to_string(),
+        ColumnType::Text | ColumnType::Varchar => "string".to_string(),
         ColumnType::Blob => "binary".to_string(),
         ColumnType::Boolean => "boolean".to_string(),
         ColumnType::Date => "date".to_string(),
@@ -531,7 +560,7 @@ fn column_type_to_hibernate_type(column_type: &ColumnType) -> String {
 fn column_type_to_java_type(column_type: &ColumnType) -> Type {
     match column_type {
         ColumnType::Integer => Type::integer(),
-        ColumnType::Text | ColumnType::Varchar  => Type::string(),
+        ColumnType::Text | ColumnType::Varchar => Type::string(),
         ColumnType::Blob => Type::new("byte[]".to_string(), "".to_string()),
         ColumnType::Boolean => Type::boolean(),
         ColumnType::Date | ColumnType::DateTime | ColumnType::Time => {
@@ -603,6 +632,14 @@ fn gen_rel_field(rel_type: &RelationType, field_name: String, field_type: Type) 
         }
     };
     field
+}
+
+fn escape_xml_special_chars(text: &str) -> String {
+    text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&apos;")
 }
 
 #[cfg(test)]

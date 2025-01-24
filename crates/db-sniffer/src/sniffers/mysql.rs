@@ -16,17 +16,25 @@ pub struct MySQLSniffer {
 
 impl DatabaseSniffer for MySQLSniffer {
     async fn new(params: ConnectionParams) -> Result<Self, crate::Error> {
-        // TODO: Remove the clone
-        let params_clone = params.clone();
-
-        let user = params.user.ok_or(MissingParamError("user".to_string()))?;
+        let user = params
+            .user
+            .as_ref()
+            .ok_or(MissingParamError("user".to_string()))?;
         let password = params
             .password
+            .as_ref()
             .ok_or(MissingParamError("password".to_string()))?;
-        let host = params.host.ok_or(MissingParamError("host".to_string()))?;
-        let port = params.port.ok_or(MissingParamError("port".to_string()))?;
+        let host = params
+            .host
+            .as_ref()
+            .ok_or(MissingParamError("host".to_string()))?;
+        let port = params
+            .port
+            .as_ref()
+            .ok_or(MissingParamError("port".to_string()))?;
         let dbname = params
             .dbname
+            .as_ref()
             .ok_or(MissingParamError("dbname".to_string()))?;
 
         let connection = MySqlConnection::connect(&format!(
@@ -36,7 +44,7 @@ impl DatabaseSniffer for MySQLSniffer {
         .await?;
 
         let sniffer = MySQLSniffer {
-            conn_params: params_clone,
+            conn_params: params,
             conn: connection,
         };
 
@@ -89,7 +97,7 @@ impl MySQLSniffer {
         }
 
         for column in columns {
-            let column = self.introspect_column(column, table_name).await;
+            let column = self.introspect_row(column, table_name).await;
             table.add_column(column);
         }
 
@@ -196,17 +204,17 @@ impl MySQLSniffer {
         table
     }
 
-    async fn introspect_column(&mut self, column: MySqlRow, table_name: &str) -> Column {
-        let column_name: &str = column.get(0);
-        let field_type: &[u8] = column.get(1);
+    async fn introspect_row(&mut self, row: MySqlRow, table_name: &str) -> Column {
+        let column_name: &str = row.get(0);
+        let field_type: &[u8] = row.get(1);
         let field_type = String::from_utf8_lossy(field_type).to_string();
         let field_type = field_type.split("(").next().unwrap();
-        let field_nullable: &str = column.get(2);
+        let field_nullable: &str = row.get(2);
         let field_nullable: bool = field_nullable == "YES";
-        let field_key: &[u8] = column.get(3);
+        let field_key: &[u8] = row.get(3);
         let field_key = String::from_utf8_lossy(field_key);
-        let field_default: Option<&str> = column.get(4);
-        let field_extra: &str = column.get(5);
+        let field_default: Option<&str> = row.get(4);
+        let field_extra: &str = row.get(5);
 
         #[cfg(test)]
         {

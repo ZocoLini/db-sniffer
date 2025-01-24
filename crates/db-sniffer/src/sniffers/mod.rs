@@ -1,4 +1,5 @@
 pub(crate) mod mysql;
+pub(crate) mod mssql;
 
 use crate::db_objects::{Database, Metadata};
 use crate::ConnectionParams;
@@ -27,6 +28,8 @@ impl SniffResults {
         }
     }
 }
+
+// TODO: Add trait DbIntrospector and make sniff use it to generate SniffResults. All abstract.
 
 pub trait DatabaseSniffer: Sized {
     async fn new(params: ConnectionParams) -> Result<Self, crate::Error>;
