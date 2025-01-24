@@ -164,6 +164,7 @@ impl<'a> XMLGenerator<'a> {
     fn generate_tables_files(&self, tables: &Vec<Table>) {
         for table in tables {
             let table_xml = self.generate_table_xml(table);
+
             let table_file_path = self.target_path.join(format!(
                 "{}.hbm.xml",
                 naming::to_upper_camel_case(table.name())
@@ -171,7 +172,6 @@ impl<'a> XMLGenerator<'a> {
 
             fs::File::create(&table_file_path).unwrap();
             fs::write(table_file_path, table_xml).unwrap();
-
             //
 
             let table_java = self.generate_table_java(table);

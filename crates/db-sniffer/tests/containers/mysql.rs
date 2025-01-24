@@ -12,7 +12,7 @@ pub fn start_container() {
             "--name",
             "mysql_db_sniffer",
             "-p",
-            "3306:3306",
+            "8000:3306",
             "mysql:db-sniffer",
         ])
         .spawn()

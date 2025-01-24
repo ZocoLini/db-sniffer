@@ -9,31 +9,17 @@ pub mod generators;
 #[allow(unused)]
 mod sniffers;
 
+mod error;
 mod naming;
 
-#[derive(Debug)]
-pub enum Error {
-    InvalidConnStringError,
-    NotSupportedDBError,
-    MissingParamError(String),
-    SQLxError(sqlx::Error),
-    DBConnectionError(String),
-}
-
-impl From<sqlx::Error> for Error {
-    fn from(value: sqlx::Error) -> Self {
-        match value {
-            _ => Error::SQLxError(value),
-        }
-    }
-}
+pub use error::Error;
 
 /// conn_str: db://user:password@host:port/[dbname]
 pub async fn sniff(conn_str: &str) -> Result<SniffResults, Error> {
     let conn_params = conn_str.parse::<ConnectionParams>()?;
 
     match conn_params.db.to_lowercase().as_str() {
-        "mysql" => {
+        "mysql" | "mariadb" => {
             let sniffer = sniffers::mysql::MySQLSniffer::new(conn_params).await?;
             Ok(sniffer.sniff().await)
         }
@@ -66,27 +52,56 @@ impl FromStr for ConnectionParams {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.is_empty() {
+            return Err(Error::InvalidConnStringError(
+                "empty connection string".to_string(),
+            ));
+        }
+
         let regex = regex::Regex::new(
             r"(?P<db>[^:]+):/(/(?P<user>[^:^@]+):(?P<password>[^/^@]+))?(@(?P<host>[^:]+):(?P<port>\d+))?(/?|/(?P<dbname>[^/]+))$"
-        ).expect("Should be a valid regex");
+        ).map_err(|_| Error::InvalidConnStringError("invalid connection string format".to_string()))?;
 
-        regex
-            .captures(s)
-            .map(|captures| ConnectionParams {
-                db: captures.name("db").unwrap().as_str().to_string(),
+        let conn_params = regex.captures(s).map(|captures| {
+            let db = if let Some(db) = captures.name("db") {
+                db.as_str()
+            } else {
+                return Err(Error::InvalidConnStringError(
+                    "missing db param in the connection string".to_string(),
+                ));
+            };
+
+            let port = if let Some(port) = captures.name("port").map(|port| port.as_str()) {
+                if let Ok(port) = port.parse::<u16>() {
+                    Some(port)
+                } else {
+                    return Err(Error::InvalidConnStringError("port is not a number".to_string()));
+                }
+            } else {
+                None
+            };
+
+            Ok(ConnectionParams {
+                db: db.to_string(),
                 user: captures.name("user").map(|user| user.as_str().to_string()),
                 password: captures
                     .name("password")
                     .map(|pass| pass.as_str().to_string()),
                 host: captures.name("host").map(|host| host.as_str().to_string()),
-                port: captures
-                    .name("port")
-                    .map(|port| port.as_str().parse().expect("Isn't a number")),
+                port,
                 dbname: captures
                     .name("dbname")
                     .map(|dbname| dbname.as_str().to_string()),
             })
-            .ok_or(Error::InvalidConnStringError)
+        });
+
+        if let Some(conn_params) = conn_params {
+            conn_params
+        } else {
+            Err(Error::InvalidConnStringError(
+                "connection params not found in the string".to_string(),
+            ))
+        }
     }
 }
 

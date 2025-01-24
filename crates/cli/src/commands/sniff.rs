@@ -41,7 +41,7 @@ impl Command for Sniff {
         let results = match db_sniffer::sniff(uri).await {
             Ok(a) => a,
             Err(e) => {
-                println!("Error: {:?}", e);
+                println!("{e}",);
                 return;
             }
         };
@@ -78,7 +78,7 @@ impl Command for Sniff {
 
         generator.generate();
     }
-
+    
     fn show_usage() {
         println!("USAGE: {} sniff -u <uri> -m <mode> [-o <output>]", BIN_NAME);
     }

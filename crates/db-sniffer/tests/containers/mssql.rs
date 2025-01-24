@@ -12,7 +12,7 @@ pub fn start_container() {
             "--name",
             "mssql_db_sniffer",
             "-p",
-            "1433:1433",
+            "8000:1433",
             "mssql:db-sniffer",
         ])
         .spawn()

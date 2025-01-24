@@ -3,7 +3,7 @@ use crate::db_objects::{
 };
 use crate::sniffers::{DatabaseSniffer, SniffResults};
 use crate::ConnectionParams;
-use crate::Error::MissingParamError;
+use crate::error::Error::MissingParamError;
 use sqlx::mysql::MySqlRow;
 use sqlx::{Connection, Executor, MySqlConnection, Row};
 use std::ops::Deref;
