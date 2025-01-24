@@ -1,10 +1,14 @@
 use std::fs;
+use std::process::Output;
+use db_sniffer::generators;
+use crate::{containers, hibernate, maven, test_dir};
+use crate::containers::DBContainer;
 use crate::maven::MavenProject;
 
-pub fn move_config_and_mapping_files_to_resources(maven_project: &MavenProject) {
+fn move_config_and_mapping_files_to_resources(maven_project: &MavenProject) {
     let mapping_files_dir = maven_project.get_package_src_dir().join("model");
     fs::create_dir_all(&mapping_files_dir).unwrap();
-    
+
     let resources_target_path = maven_project.get_package_resources_dir().join("model");
     fs::create_dir_all(&resources_target_path).unwrap();
 
@@ -39,4 +43,58 @@ pub fn move_config_and_mapping_files_to_resources(maven_project: &MavenProject) 
 
             fs::rename(entry.path(), target).unwrap();
         });
+}
+
+pub async fn start_hibernate_test(conn_str: &str, db_dependency: maven::Dependencie, container: DBContainer) {
+    let test_dir = test_dir::get();
+
+    container.start();
+
+    let test_result = aux(conn_str, db_dependency, &test_dir).await;
+
+    container.stop();
+
+    let output = match test_result {
+        Ok(r) => r,
+        Err(e) => {
+            container.stop();
+            panic!("Failed to package and execute the Maven project: {}", e)
+        }
+    };
+
+    assert!(output.status.success());
+
+    fs::remove_dir_all(test_dir).expect("Error removing the test dir");
+    
+    async fn aux(conn_str: &str, db_dependency: maven::Dependencie, test_dir: &str) -> Result<Output, String> {
+        // Creating a Maven archetype project
+        let mut maven_project = MavenProject::new(&test_dir::get());
+
+        maven_project.add_dependency(db_dependency);
+
+        if let Err(e) = maven_project.create_archetype(maven::MAIN_CONTENT) {
+            panic!("Failed to create Maven archetype project: {}", e)
+        }
+
+        let target_path = maven_project.get_package_src_dir().join("model");
+        fs::create_dir_all(&target_path)
+            .map_err(|e| format!("Failed to create target path: {}", e))?;
+
+        let sniff_results = db_sniffer::sniff(conn_str)
+            .await
+            .map_err(|e| format!("Failed to sniff the database: {}", e))?;
+
+        let generator = generators::hibernate::XMLGenerator::new(&sniff_results, &target_path)
+            .ok_or("Failed to create XMLGenerator")?;
+
+        generator.generate();
+
+        // Move the resources to the resources folder
+        move_config_and_mapping_files_to_resources(&maven_project);
+
+        // Using maven and junit to validate
+        maven_project
+            .package_and_execute()
+            .map_err(|e| format!("Failed to package and execute the Maven project: {}", e))
+    }
 }
