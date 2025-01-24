@@ -13,7 +13,7 @@ pub trait Command {
 }
 
 pub async fn try_execute(args: &str) -> Result<(), crate::Error> {
-    let mut parts = args.split_whitespace();
+    let mut parts = split_args(args).into_iter();
 
     let main_command = match parts.next() {
         Some(command) => command,
@@ -23,7 +23,7 @@ pub async fn try_execute(args: &str) -> Result<(), crate::Error> {
     let command_instr = parts.map(String::from).collect::<Vec<String>>();
     let flags = map_flags(&command_instr);
 
-    match main_command {
+    match main_command.as_str() {
         "sniff" => Ok(Sniff::execute(flags).await),
         "version" => Ok(Version::execute(flags).await),
         _ => Ok(Help::execute(flags).await),
@@ -45,8 +45,15 @@ fn map_flags(args: &Vec<String>) -> HashMap<String, &str> {
 
         if is_flag(actual_word) {
             if i + 1 < args.len() && !is_flag(next_word) {
-                let flag_value = if next_word.ends_with("\"") && next_word.starts_with("\"") {
-                    &next_word[1..next_word.len() - 1]
+                let flag_value = if next_word.ends_with("\"")
+                    && next_word.starts_with("\"")
+                    && next_word.len() > 1
+                {
+                    if next_word.len() == 2 {
+                        ""
+                    } else {
+                        &next_word[1..next_word.len() - 1]
+                    }
                 } else {
                     next_word
                 };
@@ -68,6 +75,46 @@ fn map_flags(args: &Vec<String>) -> HashMap<String, &str> {
     }
 
     hash_map
+}
+
+fn split_args(args: &str) -> Vec<String> {
+    let mut start_index = 0;
+    
+    let mut result = Vec::new();
+    
+    let mut inside_quotes = false;
+
+    for (i, c) in args.chars().enumerate() {
+        if c == ' ' && !inside_quotes {
+            if start_index != i {
+                insert_range(args, start_index, i, &mut result);
+            }
+            
+            start_index = i + 1;
+        } else if c == '"' && args.chars().nth(i - 1).unwrap() != '\\' {
+            inside_quotes = !inside_quotes;
+        }
+    }
+
+    if start_index != args.len() {
+        insert_range(args, start_index, args.len(), &mut result);
+    }
+    
+    return result;
+    
+    fn insert_range(args: &str, start: usize, end: usize, result: &mut Vec<String>) {
+        let text = &args[start..end];
+        
+        let t = if text.starts_with("\"") && text.ends_with("\"") {
+            &text[1..text.len() - 1]
+        } else {
+            text
+        };
+        
+        let t = t.replace("\\\"", "\"");
+        
+        result.push(t);
+    }
 }
 
 fn is_flag(s: &str) -> bool {
@@ -122,5 +169,19 @@ mod tests {
         assert_eq!(is_flag("-n"), true);
         assert_eq!(is_flag("--name"), true);
         assert_eq!(is_flag("name"), false);
+    }
+    
+    #[test]
+    fn test_split_args() {
+        assert_eq!(split_args("mkt remove -n crates"), vec!["mkt", "remove", "-n", "crates"]);
+        assert_eq!(split_args("mkt remove -n crates      "), vec!["mkt", "remove", "-n", "crates"]);
+        assert_eq!(split_args("mkt \"remove -n\" crates -a"), vec!["mkt", "remove -n", "crates", "-a"]);
+        assert_eq!(split_args("mkt remove -n crates \"-a       \""), vec!["mkt", "remove",  "-n", "crates", "-a       "]);
+        assert_eq!(split_args("mkt remove -n crates \"-a       "), vec!["mkt", "remove", "-n", "crates", "\"-a       "]);
+        
+        assert_eq!(split_args(""), Vec::<&str>::new());
+        
+        assert_eq!(split_args(r#"mkt \"remove -n crates"#), vec!["mkt", "\"remove", "-n", "crates"]);
+        assert_eq!(split_args("mkt remove -n crates \\\"-a       "), vec!["mkt", "remove", "-n", "crates", "\"-a"]);
     }
 }
