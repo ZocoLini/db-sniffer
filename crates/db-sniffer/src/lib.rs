@@ -1,4 +1,4 @@
-use crate::sniffers::{DatabaseSniffer, SniffResults};
+use crate::sniffers::{SniffResults};
 use getset::Getters;
 use std::str::FromStr;
 
@@ -17,19 +17,7 @@ pub use error::Error;
 /// conn_str: db://user:password@host:port/[dbname]
 pub async fn sniff(conn_str: &str) -> Result<SniffResults, Error> {
     let conn_params = conn_str.parse::<ConnectionParams>()?;
-
-    match conn_params.db.to_lowercase().as_str() {
-        "mysql" | "mariadb" => {
-            let sniffer = sniffers::mysql::MySQLSniffer::new(conn_params).await?;
-            Ok(sniffer.sniff().await)
-        }
-        "mssql" | "sqlserver" => {
-            let sniffer = sniffers::mssql::SQLServerSniffer::new(conn_params).await?;
-            Ok(sniffer.sniff().await)
-        }
-
-        _ => Err(Error::NotSupportedDBError),
-    }
+    sniffers::sniff(conn_params).await
 }
 
 #[derive(Clone, Getters)]

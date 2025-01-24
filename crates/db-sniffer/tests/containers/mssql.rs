@@ -3,7 +3,7 @@ use std::{process, thread};
 
 pub fn start_container() {
     // docker run --name mssql_db_sniffer -p 3306:3306 mssql:db-sniffer
-
+    stop_container();
     build_container();
 
     process::Command::new("docker")

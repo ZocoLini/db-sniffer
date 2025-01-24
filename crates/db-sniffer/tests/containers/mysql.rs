@@ -3,7 +3,8 @@ use std::{process, thread};
 
 pub fn start_container() {
     // docker run --name mysql_db_sniffer -p 3306:3306 mysql:db-sniffer
-
+    
+    stop_container();
     build_container();
 
     process::Command::new("docker")

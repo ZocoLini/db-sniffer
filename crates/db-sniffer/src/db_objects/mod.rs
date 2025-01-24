@@ -56,8 +56,6 @@ pub enum KeyType {
 
 pub struct TableId(Vec<Column>);
 
-// TODO: References should be stored at table level
-
 #[derive(Getters)]
 pub struct Table {
     #[get = "pub"]
@@ -139,6 +137,7 @@ impl Relation {
 }
 
 #[derive(Getters, PartialEq)]
+#[derive(Clone)]
 pub struct ColumnId {
     #[get = "pub"]
     table: String,
