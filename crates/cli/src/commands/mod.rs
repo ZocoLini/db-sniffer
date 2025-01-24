@@ -35,35 +35,12 @@ fn map_flags(args: &Vec<String>) -> HashMap<String, &str> {
     let mut i = 0;
 
     while i < args.len() {
-        let actual_word = &args[i];
-        let next_word = &args[i + 1];
-
-        #[cfg(debug_assertions)]
-        {
-            println!("Arg found: {actual_word}");
-        }
+        let actual_word = args[i].as_str();
+        let next_word = args[i + 1].as_str();
 
         if is_flag(actual_word) {
             if i + 1 < args.len() && !is_flag(next_word) {
-                let flag_value = if next_word.ends_with("\"")
-                    && next_word.starts_with("\"")
-                    && next_word.len() > 1
-                {
-                    if next_word.len() == 2 {
-                        ""
-                    } else {
-                        &next_word[1..next_word.len() - 1]
-                    }
-                } else {
-                    next_word
-                };
-
-                #[cfg(debug_assertions)]
-                {
-                    println!("Arg found: {flag_value}");
-                }
-
-                hash_map.insert(actual_word.to_string(), flag_value);
+                hash_map.insert(actual_word.to_string(), next_word);
                 i += 2;
             } else {
                 hash_map.insert(actual_word.to_string(), "");
@@ -135,7 +112,7 @@ mod tests {
             "a",
             "-a",
             "-p",
-            "\"path dir/pe_pe\"",
+            "path dir/pe_pe",
             "-r",
             "-as-dir",
             "--url",

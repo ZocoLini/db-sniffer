@@ -60,7 +60,7 @@ impl FromStr for ConnectionParams {
 
         let regex = regex::Regex::new(
             r"(?P<db>[^:]+):/(/(?P<user>[^:^@]+):(?P<password>[^/^@]+))?(@(?P<host>[^:]+):(?P<port>\d+))?(/?|/(?P<dbname>[^/]+))$"
-        ).map_err(|_| Error::InvalidConnStringError("invalid connection string format".to_string()))?;
+        ).expect("invalid regex");
 
         let conn_params = regex.captures(s).map(|captures| {
             let db = if let Some(db) = captures.name("db") {
@@ -99,7 +99,7 @@ impl FromStr for ConnectionParams {
             conn_params
         } else {
             Err(Error::InvalidConnStringError(
-                "connection params not found in the string".to_string(),
+                "invalid connection string format".to_string(),
             ))
         }
     }
