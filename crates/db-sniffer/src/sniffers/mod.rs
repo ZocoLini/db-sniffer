@@ -204,6 +204,7 @@ async fn introspect_rel(
     to: Vec<ColumnId>,
     rel_owner: bool,
 ) -> Relation {
+    // TODO: Add multiple column support
     let from_table = from[0].table();
     let to_table = to[0].table();
 
@@ -220,7 +221,11 @@ async fn introspect_rel(
     let rows: Vec<RowGetter> = sniffer.query(&sql).await;
     
     let rel_type = if rows.is_empty() {
-        RelationType::Unknown
+        if rel_owner {
+            RelationType::ManyToOne
+        } else {
+            RelationType::OneToMany
+        }
     } else {
         let mut is_one_to_one = true;
 

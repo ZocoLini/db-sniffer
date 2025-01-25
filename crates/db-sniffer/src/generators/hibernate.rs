@@ -422,7 +422,7 @@ impl<'a> XMLGenerator<'a> {
                         generate_column_xml(col)
                     )
                 }
-                RelationType::ManyToMany | RelationType::Unknown => {
+                RelationType::ManyToMany => {
                     format!(
                         r#"
     <bag name="{}s" table="{}" lazy="true" fetch="select">
@@ -620,7 +620,7 @@ fn generate_field(column: &Column) -> Field {
 
 fn gen_rel_field(rel_type: &RelationType, field_name: String, field_type: Type) -> Field {
     let field = match rel_type {
-        RelationType::OneToMany | RelationType::ManyToMany | RelationType::Unknown => {
+        RelationType::OneToMany | RelationType::ManyToMany => {
             let mut rel_type = Type::new("Set".to_string(), "java.util".to_string());
             rel_type.add_generic(field_type);
 

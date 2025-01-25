@@ -115,7 +115,6 @@ pub enum RelationType {
     OneToMany,
     ManyToOne,
     ManyToMany,
-    Unknown,
 }
 
 #[derive(Getters)]
