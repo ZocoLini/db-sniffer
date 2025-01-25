@@ -6,9 +6,11 @@ use crate::db_objects::{
 };
 use crate::{db_objects, ConnectionParams};
 use getset::Getters;
+use sqlx::{Decode, MySql, Row, Type};
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
+use tiberius::FromSql;
 
 #[derive(Getters)]
 pub struct SniffResults {
@@ -34,15 +36,36 @@ impl SniffResults {
     }
 }
 
-trait RowGet<'a, T: ?Sized> {
-    fn get<R>(&'a self, index: usize) -> R;
+trait RowGet<'a> : Sized {
+    fn generic_get<R: FromSql<'a> + sqlx::Decode<'a, MySql> + sqlx::Type<MySql>>(
+        &'a self,
+        index: usize,
+    ) -> R;
 }
 
-trait DatabaseQuerier<T> {
+trait DatabaseQuerier<'a, T: RowGet<'a> > {
     fn query(&mut self, query: &str) -> Pin<Box<dyn Future<Output = Vec<T>> + Send + '_>>;
 }
 
+enum RowGetEnum {
+    MSSQLRow(tiberius::Row),
+    MySQlRow(sqlx::mysql::MySqlRow)
+}
+
+impl RowGetEnum {
+    fn generic_get<'a, T: FromSql<'a> + Decode<'a, MySql> + sqlx::Type<MySql>>(&'a self, i: usize) -> T {
+        match self {
+            RowGetEnum::MSSQLRow(a) => a.get::<'a>(i).unwrap(),
+            RowGetEnum::MySQlRow(a) => a.get::<'a, T, _>(i)
+        }
+    }
+}
+
 trait DatabaseSniffer {
+    // Query the db
+    fn generic_get(&mut self, query: &str) -> Pin<Box<dyn Future<Output = Vec<RowGetEnum>> + Send + '_>>;
+    
+    // Obtein specific metadata
     fn query_dbs_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>>;
     fn query_tab_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>>;
     fn query_col_names(
@@ -177,6 +200,44 @@ async fn introspect_rel(
     to: Vec<ColumnId>,
     rel_owner: bool,
 ) -> Relation {
-    let rel_type = sniffer.introspect_rel_type(&from, &to, rel_owner).await;
+    let from_table = from[0].table();
+    let to_table = to[0].table();
+
+    let from_col = from[0].name();
+    let to_col = to[0].name();
+
+    let sql = format!(
+        r#"
+        select count(*) 
+            from {from_table} f inner join {to_table} t on f.{from_col} = t.{to_col}
+            group by t.{to_col};"#,
+    );
+    
+    let rows: Vec<RowGetEnum> = sniffer.generic_get(&sql).await;
+    
+    let rel_type = if rows.is_empty() {
+        RelationType::Unknown
+    } else {
+        let mut is_one_to_one = true;
+
+        for row in rows {
+            let count: i32 = row.generic_get(0);
+            if count != 1 {
+                is_one_to_one = false;
+                break;
+            }
+        }
+
+        if is_one_to_one {
+            RelationType::OneToOne
+        } else {
+            if rel_owner {
+                RelationType::ManyToOne
+            } else {
+                RelationType::OneToMany
+            }
+        }
+    };
+    
     Relation::new(from, to, rel_type)
 }

@@ -1,9 +1,11 @@
 use crate::db_objects::{ColumnId, GenerationType, KeyType, RelationType};
-use crate::sniffers::{DatabaseQuerier, DatabaseSniffer, RowGet};
+use crate::sniffers::{
+    DatabaseQuerier, DatabaseSniffer, RowGet, RowGetEnum,
+};
 use crate::ConnectionParams;
+use sqlx::Row;
 use std::future::Future;
 use std::pin::Pin;
-use sqlx::Row;
 use tiberius::{AuthMethod, Client, Config, FromSql};
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt, TokioAsyncWriteCompatExt};
@@ -68,20 +70,13 @@ impl MSSQLSniffer {
     }
 }
 
-pub enum RowGetType {
-    String,
-    Int,
-    Bool,
-}
-
-impl<'a, R: FromSql<'a>> RowGet<'a, RowGetType> for tiberius::Row {
-    fn get<R>(&'a self, index: usize) -> R {
-        let option = FromSql::from_sql(self.cells().skip(index).next().unwrap().1);
-        option.unwrap().expect("REASON")
+impl<'a> RowGet<'a> for tiberius::Row {
+    fn generic_get<R: FromSql<'a>>(&'a self, index: usize) -> R {
+        self.get(index).expect("Error fetching data")
     }
 }
 
-impl DatabaseQuerier<tiberius::Row> for MSSQLSniffer {
+impl<'a> DatabaseQuerier<'a, tiberius::Row> for MSSQLSniffer {
     fn query(
         &mut self,
         query: &str,
@@ -101,6 +96,26 @@ impl DatabaseQuerier<tiberius::Row> for MSSQLSniffer {
 }
 
 impl DatabaseSniffer for MSSQLSniffer {
+    fn generic_get(
+        &mut self,
+        query: &str,
+    ) -> Pin<Box<dyn Future<Output = Vec<RowGetEnum>> + Send + '_>> {
+        let query = query.to_string();
+
+        Box::pin(async move {
+            self.client
+                .query(query.as_str(), &[])
+                .await
+                .expect("Error fetching data")
+                .into_first_result()
+                .await
+                .expect("Error fetching data")
+                .into_iter()
+                .map(|row| RowGetEnum::MSSQLRow(row))
+                .collect()
+        })
+    }
+    
     fn query_dbs_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>> {
         Box::pin(async move {
             let db_name = self.conn_params.dbname.as_ref().unwrap().as_str();
@@ -111,7 +126,7 @@ impl DatabaseSniffer for MSSQLSniffer {
 
     fn query_tab_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>> {
         Box::pin(async move {
-            self.query(
+            self.generic_get(
                 r#"
                     select TABLE_NAME 
                     from INFORMATION_SCHEMA.TABLES  
@@ -120,9 +135,7 @@ impl DatabaseSniffer for MSSQLSniffer {
             .await
             .iter()
             .map(|row| {
-                row.get::<&str, _>(0)
-                    .expect("Error fetching table name")
-                    .to_string()
+                row.generic_get::<&str>(0).to_string()
             })
             .collect()
         })

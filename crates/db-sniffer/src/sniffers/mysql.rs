@@ -1,8 +1,10 @@
 use crate::db_objects::{ColumnId, GenerationType, KeyType, RelationType};
 use crate::error::Error::MissingParamError;
-use crate::sniffers::{DatabaseQuerier, DatabaseSniffer};
+use crate::sniffers::{
+    DatabaseQuerier, DatabaseSniffer, RowGet, RowGetEnum,
+};
 use crate::ConnectionParams;
-use sqlx::{Connection, Executor, MySqlConnection, Row};
+use sqlx::{Column, Connection, Executor, MySql, MySqlConnection, Row};
 use std::future::Future;
 use std::pin::Pin;
 pub(super) struct MySQLSniffer {
@@ -48,7 +50,13 @@ impl MySQLSniffer {
     }
 }
 
-impl DatabaseQuerier<sqlx::mysql::MySqlRow> for MySQLSniffer {
+impl<'a> RowGet<'a> for sqlx::mysql::MySqlRow {
+    fn generic_get<T: sqlx::Decode<'a, MySql> + sqlx::Type<MySql>>(&'a self, idx: usize) -> T {
+        self.get(idx)
+    }
+}
+
+impl<'a> DatabaseQuerier<'a, sqlx::mysql::MySqlRow> for MySQLSniffer {
     fn query(
         &mut self,
         query: &str,
@@ -65,6 +73,23 @@ impl DatabaseQuerier<sqlx::mysql::MySqlRow> for MySQLSniffer {
 }
 
 impl DatabaseSniffer for MySQLSniffer {
+    fn generic_get(
+        &mut self,
+        query: &str,
+    ) -> Pin<Box<dyn Future<Output = Vec<RowGetEnum>> + Send + '_>> {
+        let query = query.to_string();
+
+        Box::pin(async move {
+            sqlx::query(&query)
+                .fetch_all(&mut self.conn)
+                .await
+                .expect("Error fetching data")
+                .into_iter()
+                .map(|row| RowGetEnum::MySQlRow(row))
+                .collect()
+        })
+    }
+    
     fn query_dbs_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>> {
         Box::pin(async move {
             vec![self
@@ -188,7 +213,8 @@ impl DatabaseSniffer for MySQLSniffer {
         let column_name = column_name.to_string();
 
         Box::pin(async move {
-            let key: String = self.query(format!("describe {}", table_name).as_str())
+            let key: String = self
+                .query(format!("describe {}", table_name).as_str())
                 .await
                 .iter()
                 .filter_map(|row| {
@@ -248,15 +274,17 @@ impl DatabaseSniffer for MySQLSniffer {
         Box::pin(async move {
             let mut relations = Vec::new();
 
-            let sql = &format!("SELECT
+            let sql = &format!(
+                "SELECT
                 REFERENCED_TABLE_NAME,
                 REFERENCED_COLUMN_NAME,
                 COLUMN_NAME
             FROM
                 INFORMATION_SCHEMA.KEY_COLUMN_USAGE
             WHERE
-                TABLE_NAME = '{table_name}' 
-                AND REFERENCED_TABLE_NAME IS NOT NULL;");
+                TABLE_NAME = '{table_name}'
+                AND REFERENCED_TABLE_NAME IS NOT NULL;"
+            );
 
             let rows = self.query(sql).await;
 
@@ -288,14 +316,16 @@ impl DatabaseSniffer for MySQLSniffer {
             let mut relations = Vec::new();
             let ref_table_name = table_name;
 
-            let sql = &format!("SELECT
+            let sql = &format!(
+                "SELECT
                 TABLE_NAME,
                 COLUMN_NAME,
                 REFERENCED_COLUMN_NAME
             FROM
                 information_schema.KEY_COLUMN_USAGE
             WHERE
-                REFERENCED_TABLE_NAME = '{ref_table_name}'");
+                REFERENCED_TABLE_NAME = '{ref_table_name}'"
+            );
 
             let rows = self.query(sql).await;
 
