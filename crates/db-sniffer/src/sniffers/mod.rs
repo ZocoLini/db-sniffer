@@ -35,35 +35,45 @@ impl SniffResults {
         }
     }
 }
+/*
+ * Tried to implement a generic way to get the rows from the db but failed to do so without enums 
+ *
+ *  trait RowGet<'a> : Sized {
+ *      fn generic_get<R: FromSql<'a> + sqlx::Decode<'a, MySql> + sqlx::Type<MySql>>(
+ *          &'a self,
+ *          index: usize,
+ *      ) -> R;
+ *  }
+ *  
+ *  trait DatabaseQuerier<'a, T: RowGet<'a> > {
+ *      fn query(&mut self, query: &str) -> Pin<Box<dyn Future<Output = Vec<T>> + Send + '_>>;
+ *  }
+ */
 
-trait RowGet<'a> : Sized {
-    fn generic_get<R: FromSql<'a> + sqlx::Decode<'a, MySql> + sqlx::Type<MySql>>(
-        &'a self,
-        index: usize,
-    ) -> R;
-}
-
-trait DatabaseQuerier<'a, T: RowGet<'a> > {
-    fn query(&mut self, query: &str) -> Pin<Box<dyn Future<Output = Vec<T>> + Send + '_>>;
-}
-
-enum RowGetEnum {
+enum RowGetter {
     MSSQLRow(tiberius::Row),
     MySQlRow(sqlx::mysql::MySqlRow)
 }
 
-impl RowGetEnum {
-    fn generic_get<'a, T: FromSql<'a> + Decode<'a, MySql> + sqlx::Type<MySql>>(&'a self, i: usize) -> T {
+impl RowGetter {
+    fn get<'a, T: FromSql<'a> + Decode<'a, MySql> + sqlx::Type<MySql>>(&'a self, i: usize) -> T {
         match self {
-            RowGetEnum::MSSQLRow(a) => a.get::<'a>(i).unwrap(),
-            RowGetEnum::MySQlRow(a) => a.get::<'a, T, _>(i)
+            RowGetter::MSSQLRow(a) => a.get::<'a>(i).unwrap(),
+            RowGetter::MySQlRow(a) => a.get::<'a, T, _>(i)
+        }
+    }
+    
+    fn opt_get<'a, T: FromSql<'a> + Decode<'a, MySql> + sqlx::Type<MySql>>(&'a self, i: usize) -> Option<T> {
+        match self {
+            RowGetter::MSSQLRow(a) => a.get::<'a>(i),
+            RowGetter::MySQlRow(a) => a.get::<'a, Option<T>, _>(i)
         }
     }
 }
 
 trait DatabaseSniffer {
     // Query the db
-    fn generic_get(&mut self, query: &str) -> Pin<Box<dyn Future<Output = Vec<RowGetEnum>> + Send + '_>>;
+    fn query(&mut self, query: &str) -> Pin<Box<dyn Future<Output = Vec<RowGetter>> + Send + '_>>;
     
     // Obtein specific metadata
     fn query_dbs_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>>;
@@ -105,12 +115,6 @@ trait DatabaseSniffer {
         &mut self,
         table_name: &str,
     ) -> Pin<Box<dyn Future<Output = Vec<(Vec<ColumnId>, Vec<ColumnId>)>> + Send + '_>>;
-    fn introspect_rel_type(
-        &mut self,
-        from: &Vec<ColumnId>,
-        to: &Vec<ColumnId>,
-        rel_owner: bool,
-    ) -> Pin<Box<dyn Future<Output = RelationType> + Send + '_>>;
 }
 
 pub async fn sniff(conn_params: ConnectionParams) -> Result<SniffResults, crate::Error> {
@@ -213,7 +217,7 @@ async fn introspect_rel(
             group by t.{to_col};"#,
     );
     
-    let rows: Vec<RowGetEnum> = sniffer.generic_get(&sql).await;
+    let rows: Vec<RowGetter> = sniffer.query(&sql).await;
     
     let rel_type = if rows.is_empty() {
         RelationType::Unknown
@@ -221,7 +225,7 @@ async fn introspect_rel(
         let mut is_one_to_one = true;
 
         for row in rows {
-            let count: i32 = row.generic_get(0);
+            let count: i32 = row.get(0);
             if count != 1 {
                 is_one_to_one = false;
                 break;

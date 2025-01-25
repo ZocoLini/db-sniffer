@@ -1,10 +1,10 @@
-use crate::db_objects::{ColumnId, GenerationType, KeyType, RelationType};
+use crate::db_objects::{ColumnId, GenerationType, KeyType};
 use crate::error::Error::MissingParamError;
 use crate::sniffers::{
-    DatabaseQuerier, DatabaseSniffer, RowGet, RowGetEnum,
+    DatabaseSniffer, RowGetter,
 };
 use crate::ConnectionParams;
-use sqlx::{Column, Connection, Executor, MySql, MySqlConnection, Row};
+use sqlx::{Connection, Executor, MySqlConnection, Row};
 use std::future::Future;
 use std::pin::Pin;
 pub(super) struct MySQLSniffer {
@@ -50,33 +50,33 @@ impl MySQLSniffer {
     }
 }
 
-impl<'a> RowGet<'a> for sqlx::mysql::MySqlRow {
-    fn generic_get<T: sqlx::Decode<'a, MySql> + sqlx::Type<MySql>>(&'a self, idx: usize) -> T {
-        self.get(idx)
-    }
-}
+// impl<'a> RowGet<'a> for sqlx::mysql::MySqlRow {
+//     fn generic_get<T: sqlx::Decode<'a, MySql> + sqlx::Type<MySql>>(&'a self, idx: usize) -> T {
+//         self.get(idx)
+//     }
+// }
+// 
+// impl<'a> DatabaseQuerier<'a, sqlx::mysql::MySqlRow> for MySQLSniffer {
+//     fn query(
+//         &mut self,
+//         query: &str,
+//     ) -> Pin<Box<dyn Future<Output = Vec<sqlx::mysql::MySqlRow>> + Send + '_>> {
+//         let query = query.to_string();
+// 
+//         Box::pin(async move {
+//             sqlx::query(&query)
+//                 .fetch_all(&mut self.conn)
+//                 .await
+//                 .expect("Error fetching data")
+//         })
+//     }
+// }
 
-impl<'a> DatabaseQuerier<'a, sqlx::mysql::MySqlRow> for MySQLSniffer {
+impl DatabaseSniffer for MySQLSniffer {
     fn query(
         &mut self,
         query: &str,
-    ) -> Pin<Box<dyn Future<Output = Vec<sqlx::mysql::MySqlRow>> + Send + '_>> {
-        let query = query.to_string();
-
-        Box::pin(async move {
-            sqlx::query(&query)
-                .fetch_all(&mut self.conn)
-                .await
-                .expect("Error fetching data")
-        })
-    }
-}
-
-impl DatabaseSniffer for MySQLSniffer {
-    fn generic_get(
-        &mut self,
-        query: &str,
-    ) -> Pin<Box<dyn Future<Output = Vec<RowGetEnum>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = Vec<RowGetter>> + Send + '_>> {
         let query = query.to_string();
 
         Box::pin(async move {
@@ -85,7 +85,7 @@ impl DatabaseSniffer for MySQLSniffer {
                 .await
                 .expect("Error fetching data")
                 .into_iter()
-                .map(|row| RowGetEnum::MySQlRow(row))
+                .map(|row| RowGetter::MySQlRow(row))
                 .collect()
         })
     }
@@ -122,7 +122,7 @@ impl DatabaseSniffer for MySQLSniffer {
             self.query(format!("describe {}", table_name).as_str())
                 .await
                 .iter()
-                .map(|row| row.get::<&str, _>(0).to_string())
+                .map(|row| row.get::<&str>(0).to_string())
                 .collect()
         })
     }
@@ -140,9 +140,9 @@ impl DatabaseSniffer for MySQLSniffer {
                 .await
                 .iter()
                 .filter_map(|row| {
-                    if row.get::<&str, _>(0) == column_name {
+                    if row.get::<&str>(0) == column_name {
                         Some(
-                            String::from_utf8_lossy(row.get::<&[u8], _>(1))
+                            String::from_utf8_lossy(row.get::<&[u8]>(1))
                                 .split("(")
                                 .next()
                                 .unwrap()
@@ -169,8 +169,8 @@ impl DatabaseSniffer for MySQLSniffer {
                 .await
                 .iter()
                 .filter_map(|row| {
-                    if row.get::<&str, _>(0) == column_name {
-                        Some(row.get::<&str, _>(2).to_string())
+                    if row.get::<&str>(0) == column_name {
+                        Some(row.get::<&str>(2).to_string())
                     } else {
                         None
                     }
@@ -193,8 +193,8 @@ impl DatabaseSniffer for MySQLSniffer {
                 .await
                 .iter()
                 .filter_map(|row| {
-                    if row.get::<&str, _>(0) == column_name {
-                        row.get::<Option<&str>, _>(4)
+                    if row.get::<&str>(0) == column_name {
+                        row.opt_get::<&str>(4)
                     } else {
                         None
                     }
@@ -218,8 +218,8 @@ impl DatabaseSniffer for MySQLSniffer {
                 .await
                 .iter()
                 .filter_map(|row| {
-                    if row.get::<&str, _>(0) == column_name {
-                        Some(String::from_utf8_lossy(row.get::<&[u8], _>(3)).to_string())
+                    if row.get::<&str>(0) == column_name {
+                        Some(String::from_utf8_lossy(row.get::<&[u8]>(3)).to_string())
                     } else {
                         None
                     }
@@ -254,8 +254,8 @@ impl DatabaseSniffer for MySQLSniffer {
                 .await
                 .iter()
                 .filter_map(|row| {
-                    if row.get::<&str, _>(0) == column_name {
-                        Some(row.get::<&str, _>(5).to_string())
+                    if row.get::<&str>(0) == column_name {
+                        Some(row.get::<&str>(5).to_string())
                     } else {
                         None
                     }
@@ -344,61 +344,6 @@ impl DatabaseSniffer for MySQLSniffer {
             }
 
             relations
-        })
-    }
-
-    fn introspect_rel_type(
-        &mut self,
-        from: &Vec<ColumnId>,
-        to: &Vec<ColumnId>,
-        rel_owner: bool,
-    ) -> Pin<Box<dyn Future<Output = RelationType> + Send + '_>> {
-        // TODO: Make this work for multiple columns reference
-        let from = from.clone();
-        let to = to.clone();
-
-        Box::pin(async move {
-            let from_table = from[0].table();
-            let to_table = to[0].table();
-
-            let from_col = from[0].name();
-            let to_col = to[0].name();
-
-            let sql = format!(
-                r#"
-        select count(*) 
-            from {from_table} f inner join {to_table} t on f.{from_col} = t.{to_col}
-            group by t.{to_col};"#,
-            );
-
-            let rows = sqlx::query(&sql)
-                .fetch_all(&mut self.conn)
-                .await
-                .expect("Shouldn`t fail");
-
-            if rows.is_empty() {
-                return RelationType::Unknown;
-            }
-
-            let mut is_one_to_one = true;
-
-            for row in rows {
-                let count: i32 = row.get(0);
-                if count != 1 {
-                    is_one_to_one = false;
-                    break;
-                }
-            }
-
-            if is_one_to_one {
-                return RelationType::OneToOne;
-            }
-
-            if rel_owner {
-                RelationType::ManyToOne
-            } else {
-                RelationType::OneToMany
-            }
         })
     }
 }
