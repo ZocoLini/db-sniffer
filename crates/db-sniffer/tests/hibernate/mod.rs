@@ -58,7 +58,7 @@ pub async fn start_hibernate_test(conn_str: &str, db_dependency: maven::Dependen
         Ok(r) => r,
         Err(e) => {
             container.stop();
-            panic!("Failed to package and execute the Maven project: {}", e)
+            panic!("failed to package and execute the Maven project -> {}", e)
         }
     };
 
@@ -73,16 +73,16 @@ pub async fn start_hibernate_test(conn_str: &str, db_dependency: maven::Dependen
         maven_project.add_dependency(db_dependency);
 
         if let Err(e) = maven_project.create_archetype(maven::MAIN_CONTENT) {
-            panic!("Failed to create Maven archetype project: {}", e)
+            panic!("Failed to create Maven archetype project -> {}", e)
         }
 
         let target_path = maven_project.get_package_src_dir().join("model");
         fs::create_dir_all(&target_path)
-            .map_err(|e| format!("Failed to create target path: {}", e))?;
+            .map_err(|e| format!("Failed to create target path -> {}", e))?;
 
         let sniff_results = db_sniffer::sniff(conn_str)
             .await
-            .map_err(|e| format!("Failed to sniff the database: {}", e))?;
+            .map_err(|e| format!("Failed to sniff the database -> {}", e))?;
 
         let generator = generators::hibernate::XMLGenerator::new(&sniff_results, &target_path)
             .ok_or("Failed to create XMLGenerator")?;
@@ -95,6 +95,6 @@ pub async fn start_hibernate_test(conn_str: &str, db_dependency: maven::Dependen
         // Using maven and junit to validate
         maven_project
             .package_and_execute()
-            .map_err(|e| format!("Failed to package and execute the Maven project: {}", e))
+            .map_err(|e| format!("Failed to package and execute the Maven project -> {}", e))
     }
 }
