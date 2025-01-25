@@ -1,20 +1,20 @@
-use crate::db_objects::{
-    Column, ColumnId, ColumnType, Database, GenerationType, KeyType, Relation, RelationType, Table,
-};
-use crate::sniffers::{DatabaseSniffer, SniffResults};
+use crate::db_objects::{ColumnId, GenerationType, KeyType};
+use crate::sniffers::{DatabaseSniffer, RowGetter};
 use crate::ConnectionParams;
-use std::str::FromStr;
+use sqlx::Row;
+use std::future::Future;
+use std::pin::Pin;
 use tiberius::{AuthMethod, Client, Config};
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-pub struct SQLServerSniffer {
+pub(super) struct MSSQLSniffer {
     conn_params: ConnectionParams,
     client: Client<Compat<TcpStream>>,
 }
 
-impl DatabaseSniffer for SQLServerSniffer {
-    async fn new(params: ConnectionParams) -> Result<Self, crate::Error> {
+impl MSSQLSniffer {
+    pub async fn new(params: ConnectionParams) -> Result<Self, crate::Error> {
         let user = params
             .user
             .as_ref()
@@ -59,225 +59,185 @@ impl DatabaseSniffer for SQLServerSniffer {
             .await
             .map_err(|e| crate::Error::DBConnectionError(e.to_string()))?;
 
-        let sniffer = SQLServerSniffer {
+        let sniffer = MSSQLSniffer {
             conn_params: params,
             client,
         };
 
         Ok(sniffer)
     }
-
-    async fn sniff(mut self) -> SniffResults {
-        let database = self.introspect_database().await;
-
-        SniffResults {
-            metadata: Default::default(),
-            database,
-            conn_params: self.conn_params,
-        }
-    }
 }
 
-impl SQLServerSniffer {
-    async fn introspect_database(&mut self) -> Database {
-        let db_name = self.conn_params.dbname.as_ref().unwrap().as_str();
+// impl<'a> RowGet<'a> for tiberius::Row {
+//     fn generic_get<R: FromSql<'a>>(&'a self, index: usize) -> R {
+//         self.get(index).expect("Error fetching data")
+//     }
+// }
+//
+// impl<'a> DatabaseQuerier<'a, tiberius::Row> for MSSQLSniffer {
+//     fn query(
+//         &mut self,
+//         query: &str,
+//     ) -> Pin<Box<dyn Future<Output = Vec<tiberius::Row>> + Send + '_>> {
+//         let query = query.to_string();
+//
+//         Box::pin(async move {
+//             self.client
+//                 .query(query.as_str(), &[])
+//                 .await
+//                 .expect("Error fetching data")
+//                 .into_first_result()
+//                 .await
+//                 .expect("Error fetching data")
+//         })
+//     }
+// }
 
-        let mut database = Database::new(db_name);
+impl DatabaseSniffer for MSSQLSniffer {
+    fn query(&mut self, query: &str) -> Pin<Box<dyn Future<Output = Vec<RowGetter>> + Send + '_>> {
+        let query = query.to_string();
 
-        let tables = self
-            .client
-            .query(
-                r#"
-        select TABLE_NAME 
-        from INFORMATION_SCHEMA.TABLES  
-        where TABLE_TYPE = 'BASE TABLE';"#,
-                &[],
-            )
-            .await
-            .expect("Error fetching tables")
-            .into_first_result()
-            .await
-            .expect("Error fetching tables");
-
-        for table in tables.iter() {
-            let table_name: &str = table.get(0).expect("REASON");
-
-            database.add_table(self.introspect_table(table_name).await);
-        }
-
-        database
+        Box::pin(async move {
+            self.client
+                .query(query.as_str(), &[])
+                .await
+                .expect("Error fetching data")
+                .into_first_result()
+                .await
+                .expect("Error fetching data")
+                .into_iter()
+                .map(|row| RowGetter::MSSQLRow(row))
+                .collect()
+        })
     }
 
-    async fn introspect_table(&mut self, table_name: &str) -> Table {
-        let mut table = Table::new(table_name);
+    fn query_dbs_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>> {
+        Box::pin(async move {
+            let db_name = self.conn_params.dbname.as_ref().unwrap().as_str();
 
-        let columns = self
-            .client
-            .query(
-                "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT
+            vec![db_name.to_string()]
+        })
+    }
+
+    fn query_tab_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>> {
+        Box::pin(async move {
+            self.query(
+                r#"
+                    select TABLE_NAME 
+                    from INFORMATION_SCHEMA.TABLES  
+                    where TABLE_TYPE = 'BASE TABLE';"#,
+            )
+            .await
+            .iter()
+            .map(|row| row.get::<&str>(0).to_string())
+            .collect()
+        })
+    }
+
+    fn query_col_names(
+        &mut self,
+        table_name: &str,
+    ) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>> {
+        let table_name = table_name.to_string();
+
+        Box::pin(async move {
+            self.query(&format!(
+                "SELECT COLUMN_NAME
             FROM 
                 INFORMATION_SCHEMA.COLUMNS
             WHERE 
-                TABLE_NAME = @P1;",
-                &[&table_name],
-            )
+                TABLE_NAME = '{table_name}';"
+            ))
             .await
-            .expect("Error describing table")
-            .into_first_result()
-            .await
-            .expect("Error describing table");
-
-        #[cfg(test)]
-        {
-            println!("table: {}", table_name);
-        }
-
-        for column in columns {
-            let column = self.introspect_column(column, table_name).await;
-            table.add_column(column);
-        }
-
-        let references = {
-            let mut relations: Vec<Relation> = Vec::new();
-            // TODO: Check TABLE_CONSTRAINTS to get the type of the relation and
-            let sql = "SELECT
-                pk_tab.name AS ReferencedTable,
-                pk_col.name AS ReferencedColumn,
-                fk_col.name AS ForeignKeyColumn,
-                fk_tab.name AS ForeignKeyTable
-            FROM
-                sys.foreign_keys fk
-                    INNER JOIN
-                sys.foreign_key_columns fk_cols ON fk.object_id = fk_cols.constraint_object_id
-                    INNER JOIN
-                sys.tables fk_tab ON fk_tab.object_id = fk.parent_object_id
-                    INNER JOIN
-                sys.columns fk_col ON fk_col.column_id = fk_cols.parent_column_id AND fk_col.object_id = fk_tab.object_id
-                    INNER JOIN
-                sys.tables pk_tab ON pk_tab.object_id = fk.referenced_object_id
-                    INNER JOIN
-                sys.columns pk_col ON pk_col.column_id = fk_cols.referenced_column_id AND pk_col.object_id = pk_tab.object_id
-            WHERE
-                fk_tab.name = @P1;";
-
-            let rows = self
-                .client
-                .query(sql, &[&table_name])
-                .await
-                .expect("Error fetching references")
-                .into_first_result()
-                .await
-                .expect("Error fetching references");
-
-            for row in rows {
-                let ref_table_name: &str = row.get(0).expect("Error fetching ref table name");
-                let ref_column_name: &str = row.get(1).expect("Error fetching ref column name");
-                let column_name: &str = row.get(2).expect("Error fetching column name");
-
-                #[cfg(test)]
-                {
-                    println!(
-                        "Column {} references {} ({})",
-                        column_name, ref_table_name, ref_column_name
-                    );
-                }
-
-                let from = ColumnId::new(table_name, column_name);
-                let to = ColumnId::new(ref_table_name, ref_column_name);
-
-                let from = vec![from];
-                let to = vec![to];
-
-                let rel_type = self.introspect_rel_type(&from, &to, true).await;
-
-                relations.push(Relation::new(from, to, rel_type));
-            }
-
-            relations
-        };
-
-        references
-            .into_iter()
-            .for_each(|rel: Relation| table.add_reference_to(rel));
-
-        let referenced_by = {
-            let mut relations = Vec::new();
-            let ref_table_name = table_name;
-
-            let sql = "SELECT
-                fk_tab.name AS ReferencingTable,
-                fk_col.name AS ReferencingColumn,
-                pk_col.name AS ReferencedColumn
-            FROM
-                sys.foreign_keys fk
-                    INNER JOIN
-                sys.foreign_key_columns fk_cols ON fk.object_id = fk_cols.constraint_object_id
-                    INNER JOIN
-                sys.tables fk_tab ON fk_tab.object_id = fk.parent_object_id
-                    INNER JOIN
-                sys.columns fk_col ON fk_col.object_id = fk_tab.object_id AND fk_col.column_id = fk_cols.parent_column_id
-                    INNER JOIN
-                sys.columns pk_col ON pk_col.object_id = fk.referenced_object_id AND pk_col.column_id = fk_cols.referenced_column_id
-            WHERE
-                fk.referenced_object_id = OBJECT_ID(@P1);";
-
-            let rows = self
-                .client
-                .query(sql, &[&table_name])
-                .await
-                .expect("Error fetching referenced by")
-                .into_first_result()
-                .await
-                .expect("Error fetching referenced by");
-
-            for row in rows {
-                let table_name: &str = row.get(0).expect("Error fetching table name");
-                let column_name: &str = row.get(1).expect("Error fetching column name");
-                let ref_column_name: &str = row.get(2).expect("Error fetching ref column name");
-
-                #[cfg(test)]
-                {
-                    println!(
-                        "Column {} is referenced by {} ({})",
-                        ref_column_name, table_name, column_name
-                    );
-                }
-
-                let from = ColumnId::new(table_name, column_name);
-                let to = ColumnId::new(ref_table_name, ref_column_name);
-
-                let from = vec![from];
-                let to = vec![to];
-
-                let rel_type = self.introspect_rel_type(&from, &to, false).await;
-
-                relations.push(Relation::new(from, to, rel_type));
-            }
-
-            relations
-        };
-
-        referenced_by
-            .into_iter()
-            .for_each(|rel: Relation| table.add_referenced_by(rel));
-
-        table
+            .iter()
+            .map(|row| row.get::<&str>(0).to_string())
+            .collect()
+        })
     }
 
-    async fn introspect_column(&mut self, column: tiberius::Row, table_name: &str) -> Column {
-        let column_name: &str = column.get(0).expect("Error fetching column name");
-        let field_type: &str = column.get(1).expect("Error fetching field type");
-        let field_nullable = column
-            .get::<&str, _>(2)
-            .expect("Erro fetching nullable column state")
-            == "YES";
-        let field_default: Option<&str> = column.get(3);
+    fn query_col_type(
+        &mut self,
+        table_name: &str,
+        column_name: &str,
+    ) -> Pin<Box<dyn Future<Output = String> + Send + '_>> {
+        let table_name = table_name.to_string();
+        let column_name = column_name.to_string();
 
-        // TODO: Unique columns are beeing detected as Primary Keys. EX.: Deparment table
-        let field_key = self
-            .client
-            .query(
-                "WITH KeyColumns AS (
+        Box::pin(async move {
+            self.query(&format!(
+                "SELECT DATA_TYPE
+            FROM 
+                INFORMATION_SCHEMA.COLUMNS
+            WHERE 
+                TABLE_NAME = '{table_name}' AND COLUMN_NAME = '{column_name}'"
+            ))
+            .await
+            .iter()
+            .map(|row| row.get::<&str>(0).to_string())
+            .collect()
+        })
+    }
+
+    fn query_is_col_nullable(
+        &mut self,
+        table_name: &str,
+        column_name: &str,
+    ) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
+        let table_name = table_name.to_string();
+        let column_name = column_name.to_string();
+
+        Box::pin(async move {
+            self.query(&format!(
+                "SELECT IS_NULLABLE
+            FROM 
+                INFORMATION_SCHEMA.COLUMNS
+            WHERE 
+                TABLE_NAME = '{table_name}' AND COLUMN_NAME = '{column_name}'",
+            ))
+            .await
+            .iter()
+            .map(|row| row.get::<&str>(0))
+            .collect::<String>()
+                == "YES".to_string()
+        })
+    }
+
+    fn query_col_default(
+        &mut self,
+        table_name: &str,
+        column_name: &str,
+    ) -> Pin<Box<dyn Future<Output = Option<String>> + Send + '_>> {
+        let table_name = table_name.to_string();
+        let column_name = column_name.to_string();
+
+        Box::pin(async move {
+            self.query(&format!(
+                "SELECT COLUMN_DEFAULT
+                        FROM 
+                            INFORMATION_SCHEMA.COLUMNS
+                        WHERE 
+                            TABLE_NAME = '{table_name}' AND COLUMN_NAME = '{column_name}'"
+            ))
+            .await
+            .iter()
+            .next()?
+            .opt_get::<&str>(0)
+            .and_then(|s| Some(s.to_string()))
+        })
+    }
+
+    fn query_col_key(
+        &mut self,
+        table_name: &str,
+        column_name: &str,
+    ) -> Pin<Box<dyn Future<Output = KeyType> + Send + '_>> {
+        let table_name = table_name.to_string();
+        let column_name = column_name.to_string();
+
+        Box::pin(async move {
+            let field_key = self
+                .query(&format!(
+                    "WITH KeyColumns AS (
                     SELECT
                         SCHEMA_NAME(t.schema_id) AS schema_name,
                         t.name AS table_name,
@@ -311,37 +271,40 @@ impl SQLServerSniffer {
                     key_type
                 FROM
                     KeyColumns
-                WHERE table_name = @P1 and column_name = @P2",
-                &[&table_name.to_string(), &column_name.to_string()],
-            )
-            .await
-            .expect("Error fetching key")
-            .into_first_result()
-            .await
-            .expect("Error fetching key");
+                WHERE table_name = '{table_name}' and column_name = '{column_name}'"
+                )).await;
 
-        let field_key = field_key
-            .get(0)
-            .expect("Error fetching key")
-            .get(0)
-            .unwrap_or("NO KEY");
+            let field_key = field_key
+                .get(0)
+                .expect("Error fetching key")
+                .opt_get(0)
+                .unwrap_or("NO KEY");
 
-        #[cfg(test)]
-        #[cfg(debug_assertions)]
-        {
-            println!(
-                "name: {:?}, type: {:?}, nullable: {:?}, key: {:?}, default: {:?}",
-                column_name,
-                field_type,
-                field_nullable,
-                field_key,
-                field_default.unwrap_or_default()
-            );
-        }
+            match field_key {
+                "PRI" => {
+                    if self.query_is_col_auto_incr(&table_name, &column_name).await {
+                        KeyType::Primary(GenerationType::AutoIncrement)
+                    } else {
+                        KeyType::Primary(GenerationType::None)
+                    }
+                }
+                "FK" => KeyType::Foreign,
+                "UNI" => KeyType::Unique,
+                _ => KeyType::None,
+            }
+        })
+    }
 
-        let key = match field_key {
-            "PRI" => {
-                let auto_increment = self.client.query("SELECT
+    fn query_is_col_auto_incr(
+        &mut self,
+        table_name: &str,
+        column_name: &str,
+    ) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
+        let table_name = table_name.to_string();
+        let column_name = column_name.to_string();
+
+        Box::pin(async move {
+            let auto_increment = self.query(&format!("SELECT
                     CASE
                         WHEN ic.SEED_VALUE IS NOT NULL THEN 'auto_increment'
                         ELSE ''
@@ -353,90 +316,110 @@ impl SQLServerSniffer {
                         LEFT JOIN
                     sys.identity_columns ic ON col.object_id = ic.object_id AND col.column_id = ic.column_id
                 WHERE
-                    tab.name = @P1 and col.name = @P1;", &[&table_name.to_string(), &column_name.to_string()])
-                    .await
-                    .expect("Error fetching key")
-                    .into_first_result()
-                    .await
-                    .expect("Error fetching key");
+                    tab.name = '{table_name}' and col.name = '{column_name}';"))
+                                     .await;
 
-                let auto_increment = if let Some(auto_increment) = auto_increment.get(0) {
-                    auto_increment.get(0).expect("Error fetching key")
-                } else {
-                    ""
-                };
+            let auto_increment = if let Some(auto_increment) = auto_increment.get(0) {
+                auto_increment.get(0)
+            } else {
+                ""
+            };
 
-                match auto_increment {
-                    "auto_increment" => KeyType::Primary(GenerationType::AutoIncrement),
-                    _ => KeyType::Primary(GenerationType::None),
-                }
+            match auto_increment {
+                "auto_increment" => true,
+                _ => false,
             }
-            "FK" => KeyType::Foreign,
-            "UNI" => KeyType::Unique,
-            _ => KeyType::None,
-        };
-
-        // Las PK o UQ también pueden ser FK
-
-        Column::new(
-            ColumnId::new(table_name, column_name),
-            ColumnType::from_str(&field_type.to_string()).unwrap(),
-            field_nullable,
-            key,
-        )
+        })
     }
 
-    async fn introspect_rel_type(
+    fn query_table_references(
         &mut self,
-        from: &Vec<ColumnId>,
-        to: &Vec<ColumnId>,
-        rel_owner: bool,
-    ) -> RelationType {
-        // TODO: Make this work for multiple columns reference
-        let from_table = from[0].table();
-        let to_table = to[0].table();
+        table_name: &str,
+    ) -> Pin<Box<dyn Future<Output = Vec<(Vec<ColumnId>, Vec<ColumnId>)>> + Send + '_>> {
+        let table_name = table_name.to_string();
 
-        let from_col = from[0].name();
-        let to_col = to[0].name();
+        Box::pin(async move {
+            let mut relations = Vec::new();
 
-        let sql = format!(
-            r#"
-        select count(*)
-            from {from_table} f inner join {to_table} t on f.{from_col} = t.{to_col}
-            group by t.{to_col};"#,
-        );
+            let sql = &format!("SELECT
+                pk_tab.name AS ReferencedTable,
+                pk_col.name AS ReferencedColumn,
+                fk_col.name AS ForeignKeyColumn
+            FROM
+                sys.foreign_keys fk
+                    INNER JOIN
+                sys.foreign_key_columns fk_cols ON fk.object_id = fk_cols.constraint_object_id
+                    INNER JOIN
+                sys.tables fk_tab ON fk_tab.object_id = fk.parent_object_id
+                    INNER JOIN
+                sys.columns fk_col ON fk_col.column_id = fk_cols.parent_column_id AND fk_col.object_id = fk_tab.object_id
+                    INNER JOIN
+                sys.tables pk_tab ON pk_tab.object_id = fk.referenced_object_id
+                    INNER JOIN
+                sys.columns pk_col ON pk_col.column_id = fk_cols.referenced_column_id AND pk_col.object_id = pk_tab.object_id
+            WHERE
+                fk_tab.name = '{table_name}';");
 
-        let rows = self
-            .client
-            .query(&sql, &[])
-            .await
-            .expect("Shouldn`t fail")
-            .into_first_result()
-            .await
-            .expect("Shouldn`t fail");
+            for row in self.query(sql).await {
+                let ref_table_name: &str = row.get(0);
+                let ref_column_name: &str = row.get(1);
+                let column_name: &str = row.get(2);
 
-        if rows.is_empty() {
-            return RelationType::Unknown;
-        }
+                let from = ColumnId::new(&table_name, column_name);
+                let to = ColumnId::new(ref_table_name, ref_column_name);
 
-        let mut is_one_to_one = true;
+                let from = vec![from];
+                let to = vec![to];
 
-        for row in rows {
-            let count: i32 = row.get(0).expect("Shouldn`t fail");
-            if count != 1 {
-                is_one_to_one = false;
-                break;
+                relations.push((from, to));
             }
-        }
 
-        if is_one_to_one {
-            return RelationType::OneToOne;
-        }
+            relations
+        })
+    }
 
-        if rel_owner {
-            RelationType::ManyToOne
-        } else {
-            RelationType::OneToMany
-        }
+    fn query_table_referenced_by(
+        &mut self,
+        table_name: &str,
+    ) -> Pin<Box<dyn Future<Output = Vec<(Vec<ColumnId>, Vec<ColumnId>)>> + Send + '_>> {
+        let table_name = table_name.to_string();
+
+        Box::pin(async move {
+            let mut relations = Vec::new();
+            let ref_table_name = table_name;
+
+            let sql = &format!("SELECT
+                fk_tab.name AS ReferencingTable,
+                fk_col.name AS ReferencingColumn,
+                pk_col.name AS ReferencedColumn
+            FROM
+                sys.foreign_keys fk
+                    INNER JOIN
+                sys.foreign_key_columns fk_cols ON fk.object_id = fk_cols.constraint_object_id
+                    INNER JOIN
+                sys.tables fk_tab ON fk_tab.object_id = fk.parent_object_id
+                    INNER JOIN
+                sys.columns fk_col ON fk_col.object_id = fk_tab.object_id AND fk_col.column_id = fk_cols.parent_column_id
+                    INNER JOIN
+                sys.columns pk_col ON pk_col.object_id = fk.referenced_object_id AND pk_col.column_id = fk_cols.referenced_column_id
+            WHERE
+                fk.referenced_object_id = OBJECT_ID('{ref_table_name}');");
+
+            for row in self.query(sql).await {
+                let table_name: &str = row.get(0);
+                let column_name: &str = row.get(1);
+                let ref_column_name: &str = row.get(2);
+
+                let from = ColumnId::new(table_name, column_name);
+                let to = ColumnId::new(&ref_table_name, ref_column_name);
+
+                let from = vec![from];
+                let to = vec![to];
+
+                relations.push((from, to));
+            }
+
+            relations
+        })
     }
 }

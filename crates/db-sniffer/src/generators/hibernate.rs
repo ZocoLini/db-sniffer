@@ -164,6 +164,7 @@ impl<'a> XMLGenerator<'a> {
     fn generate_tables_files(&self, tables: &Vec<Table>) {
         for table in tables {
             let table_xml = self.generate_table_xml(table);
+
             let table_file_path = self.target_path.join(format!(
                 "{}.hbm.xml",
                 naming::to_upper_camel_case(table.name())
@@ -171,7 +172,6 @@ impl<'a> XMLGenerator<'a> {
 
             fs::File::create(&table_file_path).unwrap();
             fs::write(table_file_path, table_xml).unwrap();
-
             //
 
             let table_java = self.generate_table_java(table);
@@ -292,6 +292,8 @@ impl<'a> XMLGenerator<'a> {
                     continue;
                 }
 
+                // TODO: decimal should define scale and precision
+                
                 result = result.add(&format!(
                     r#"
     <property name="{}" type="{}">
@@ -551,9 +553,10 @@ fn column_type_to_hibernate_type(column_type: &ColumnType) -> String {
         ColumnType::Date => "date".to_string(),
         ColumnType::DateTime => "timestamp".to_string(),
         ColumnType::Time => "time".to_string(),
-        ColumnType::Double | ColumnType::Decimal => "double".to_string(),
+        ColumnType::Double => "double".to_string(),
         ColumnType::Float => "float".to_string(),
         ColumnType::Char => "char".to_string(),
+        ColumnType::Decimal => "big_decimal".to_string(),
     }
 }
 
@@ -566,9 +569,10 @@ fn column_type_to_java_type(column_type: &ColumnType) -> Type {
         ColumnType::Date | ColumnType::DateTime | ColumnType::Time => {
             Type::new("Date".to_string(), "java.util".to_string())
         }
-        ColumnType::Double | ColumnType::Decimal => Type::double(),
+        ColumnType::Double => Type::double(),
         ColumnType::Float => Type::float(),
-        &ColumnType::Char => Type::character(),
+        ColumnType::Char => Type::character(),
+        ColumnType::Decimal => Type::new("BigDecimal".to_string(), "java.math".to_string()),
     }
 }
 

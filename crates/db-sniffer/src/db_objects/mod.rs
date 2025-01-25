@@ -20,7 +20,7 @@ pub enum ColumnType {
 
 impl FromStr for ColumnType {
     type Err = ();
-
+    
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "int" | "integer" => Ok(ColumnType::Integer),
@@ -55,8 +55,6 @@ pub enum KeyType {
 }
 
 pub struct TableId(Vec<Column>);
-
-// TODO: References should be stored at table level
 
 #[derive(Getters)]
 pub struct Table {
@@ -139,6 +137,7 @@ impl Relation {
 }
 
 #[derive(Getters, PartialEq)]
+#[derive(Clone)]
 pub struct ColumnId {
     #[get = "pub"]
     table: String,

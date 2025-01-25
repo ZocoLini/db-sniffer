@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/cli", "crates/db-sniffer", "crates/dotjava"]
+members = ["crates/cli", "crates/db-sniffer", "crates/dotjava", "crates/macros"]
 
 [workspace.dependencies]
 tokio = { version = "1.42.0", features = ["full"]}
