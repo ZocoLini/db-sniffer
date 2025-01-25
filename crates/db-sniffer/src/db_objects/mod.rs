@@ -16,6 +16,7 @@ pub enum ColumnType {
     Boolean,
     Blob,
     Decimal,
+    Numeric,
 }
 
 impl FromStr for ColumnType {
@@ -35,6 +36,7 @@ impl FromStr for ColumnType {
             "boolean" | "bool" => Ok(ColumnType::Boolean),
             "blob" => Ok(ColumnType::Blob),
             "decimal" => Ok(ColumnType::Decimal),
+            "numeric" => Ok(ColumnType::Numeric),
             _ => Err(()),
         }
     }

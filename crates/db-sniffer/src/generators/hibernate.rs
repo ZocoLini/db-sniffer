@@ -292,7 +292,7 @@ impl<'a> XMLGenerator<'a> {
                     continue;
                 }
 
-                // TODO: decimal should define scale and precision
+                // TODO: decimal type not working with big decimal as it is defined right now
                 
                 result = result.add(&format!(
                     r#"
@@ -543,7 +543,7 @@ impl<'a> XMLGenerator<'a> {
         java_class.into()
     }
 }
-
+// TODO: Decimal not working. Ask other for the correct mapping type
 fn column_type_to_hibernate_type(column_type: &ColumnType) -> String {
     match column_type {
         ColumnType::Integer => "int".to_string(),
@@ -556,7 +556,7 @@ fn column_type_to_hibernate_type(column_type: &ColumnType) -> String {
         ColumnType::Double => "double".to_string(),
         ColumnType::Float => "float".to_string(),
         ColumnType::Char => "char".to_string(),
-        ColumnType::Decimal => "big_decimal".to_string(),
+        ColumnType::Decimal | ColumnType::Numeric => "big_decimal".to_string(),
     }
 }
 
@@ -572,7 +572,7 @@ fn column_type_to_java_type(column_type: &ColumnType) -> Type {
         ColumnType::Double => Type::double(),
         ColumnType::Float => Type::float(),
         ColumnType::Char => Type::character(),
-        ColumnType::Decimal => Type::new("BigDecimal".to_string(), "java.math".to_string()),
+        ColumnType::Decimal | ColumnType::Numeric => Type::new("BigDecimal".to_string(), "java.math".to_string()),
     }
 }
 

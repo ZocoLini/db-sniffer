@@ -20,7 +20,7 @@ create table Person (
     birthdate date,
     created datetime,
     department_id int,
-    salario decimal(19, 2),
+    salario numeric,
     salario_extra float,
     paga_extra double precision,
     foreign key (department_id) references Department(id) -- one-to-many

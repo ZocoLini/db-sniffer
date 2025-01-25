@@ -270,7 +270,7 @@ public class Main
         }
         finally
         {
-            session.close();
+            if (session != null) session.close();
             sessionFactory.close();
         }
     }
