@@ -34,6 +34,14 @@ impl SniffResults {
     }
 }
 
+trait RowGet<'a, T: ?Sized> {
+    fn get<R>(&'a self, index: usize) -> R;
+}
+
+trait DatabaseQuerier<T> {
+    fn query(&mut self, query: &str) -> Pin<Box<dyn Future<Output = Vec<T>> + Send + '_>>;
+}
+
 trait DatabaseSniffer {
     fn query_dbs_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>>;
     fn query_tab_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>>;
@@ -108,6 +116,7 @@ async fn introspect_database(sniffer: &mut (impl DatabaseSniffer + ?Sized)) -> D
 
     database
 }
+
 async fn introspect_table(
     sniffer: &mut (impl DatabaseSniffer + ?Sized),
     table_name: &str,
@@ -125,8 +134,8 @@ async fn introspect_table(
             assert_eq!(x.table(), table_name);
         }
 
-        let rel_type = sniffer.introspect_rel_type(&from, &to, true).await;
-        table.add_reference_to(Relation::new(from, to, rel_type));
+        let rel = introspect_rel(sniffer, from, to, true).await;
+        table.add_reference_to(rel);
     }
 
     for (from, to) in sniffer.query_table_referenced_by(table_name).await {
@@ -135,12 +144,13 @@ async fn introspect_table(
             assert_eq!(x.table(), table_name);
         }
 
-        let rel_type = sniffer.introspect_rel_type(&from, &to, false).await;
-        table.add_referenced_by(Relation::new(from, to, rel_type));
+        let rel = introspect_rel(sniffer, from, to, false).await;
+        table.add_referenced_by(rel);
     }
 
     table
 }
+
 async fn introspect_column(
     sniffer: &mut (impl DatabaseSniffer + ?Sized),
     column_name: &str,
@@ -159,4 +169,14 @@ async fn introspect_column(
         nullable,
         key,
     )
+}
+
+async fn introspect_rel(
+    sniffer: &mut (impl DatabaseSniffer + ?Sized),
+    from: Vec<ColumnId>,
+    to: Vec<ColumnId>,
+    rel_owner: bool,
+) -> Relation {
+    let rel_type = sniffer.introspect_rel_type(&from, &to, rel_owner).await;
+    Relation::new(from, to, rel_type)
 }

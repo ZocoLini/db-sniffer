@@ -1,11 +1,10 @@
-use crate::db_objects::{
-    ColumnId, GenerationType, KeyType, RelationType,
-};
-use crate::sniffers::DatabaseSniffer;
+use crate::db_objects::{ColumnId, GenerationType, KeyType, RelationType};
+use crate::sniffers::{DatabaseQuerier, DatabaseSniffer, RowGet};
 use crate::ConnectionParams;
 use std::future::Future;
 use std::pin::Pin;
-use tiberius::{AuthMethod, Client, Config};
+use sqlx::Row;
+use tiberius::{AuthMethod, Client, Config, FromSql};
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
@@ -69,6 +68,38 @@ impl MSSQLSniffer {
     }
 }
 
+pub enum RowGetType {
+    String,
+    Int,
+    Bool,
+}
+
+impl<'a, R: FromSql<'a>> RowGet<'a, RowGetType> for tiberius::Row {
+    fn get<R>(&'a self, index: usize) -> R {
+        let option = FromSql::from_sql(self.cells().skip(index).next().unwrap().1);
+        option.unwrap().expect("REASON")
+    }
+}
+
+impl DatabaseQuerier<tiberius::Row> for MSSQLSniffer {
+    fn query(
+        &mut self,
+        query: &str,
+    ) -> Pin<Box<dyn Future<Output = Vec<tiberius::Row>> + Send + '_>> {
+        let query = query.to_string();
+
+        Box::pin(async move {
+            self.client
+                .query(query.as_str(), &[])
+                .await
+                .expect("Error fetching data")
+                .into_first_result()
+                .await
+                .expect("Error fetching data")
+        })
+    }
+}
+
 impl DatabaseSniffer for MSSQLSniffer {
     fn query_dbs_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>> {
         Box::pin(async move {
@@ -80,26 +111,20 @@ impl DatabaseSniffer for MSSQLSniffer {
 
     fn query_tab_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>> {
         Box::pin(async move {
-            self.client
-                .query(
-                    r#"
-        select TABLE_NAME 
-        from INFORMATION_SCHEMA.TABLES  
-        where TABLE_TYPE = 'BASE TABLE';"#,
-                    &[],
-                )
-                .await
-                .expect("Error fetching tables")
-                .into_first_result()
-                .await
-                .expect("Error fetching tables")
-                .iter()
-                .map(|row| {
-                    row.get::<&str, _>(0)
-                        .expect("Error fetching table name")
-                        .to_string()
-                })
-                .collect()
+            self.query(
+                r#"
+                    select TABLE_NAME 
+                    from INFORMATION_SCHEMA.TABLES  
+                    where TABLE_TYPE = 'BASE TABLE';"#,
+            )
+            .await
+            .iter()
+            .map(|row| {
+                row.get::<&str, _>(0)
+                    .expect("Error fetching table name")
+                    .to_string()
+            })
+            .collect()
         })
     }
 
@@ -110,27 +135,21 @@ impl DatabaseSniffer for MSSQLSniffer {
         let table_name = table_name.to_string();
 
         Box::pin(async move {
-            self.client
-                .query(
-                    "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COLUMN_DEFAULT
+            self.query(&format!(
+                "SELECT COLUMN_NAME
             FROM 
                 INFORMATION_SCHEMA.COLUMNS
             WHERE 
-                TABLE_NAME = @P1;",
-                    &[&table_name],
-                )
-                .await
-                .expect("Error describing table")
-                .into_first_result()
-                .await
-                .expect("Error describing table")
-                .iter()
-                .map(|row| {
-                    row.get::<&str, _>(0)
-                        .expect("Error fetching column name")
-                        .to_string()
-                })
-                .collect()
+                TABLE_NAME = '{table_name}';"
+            ))
+            .await
+            .iter()
+            .map(|row| {
+                row.get::<&str, _>(0)
+                    .expect("Error fetching column name")
+                    .to_string()
+            })
+            .collect()
         })
     }
 
@@ -143,27 +162,21 @@ impl DatabaseSniffer for MSSQLSniffer {
         let column_name = column_name.to_string();
 
         Box::pin(async move {
-            self.client
-                .query(
-                    "SELECT DATA_TYPE
+            self.query(&format!(
+                "SELECT DATA_TYPE
             FROM 
                 INFORMATION_SCHEMA.COLUMNS
             WHERE 
-                TABLE_NAME = @P1 AND COLUMN_NAME = @P2",
-                    &[&table_name, &column_name],
-                )
-                .await
-                .expect("Error describing table")
-                .into_first_result()
-                .await
-                .expect("Error describing table")
-                .iter()
-                .map(|row| {
-                    row.get::<&str, _>(0)
-                        .expect("Error fetching column name")
-                        .to_string()
-                })
-                .collect()
+                TABLE_NAME = '{table_name}' AND COLUMN_NAME = '{column_name}'"
+            ))
+            .await
+            .iter()
+            .map(|row| {
+                row.get::<&str, _>(0)
+                    .expect("Error fetching column name")
+                    .to_string()
+            })
+            .collect()
         })
     }
 
@@ -174,25 +187,19 @@ impl DatabaseSniffer for MSSQLSniffer {
     ) -> Pin<Box<dyn Future<Output = bool> + Send + '_>> {
         let table_name = table_name.to_string();
         let column_name = column_name.to_string();
-        
+
         Box::pin(async move {
-            self.client
-                .query(
-                    "SELECT IS_NULLABLE
+            self.query(&format!(
+                "SELECT IS_NULLABLE
             FROM 
                 INFORMATION_SCHEMA.COLUMNS
             WHERE 
-                TABLE_NAME = @P1 AND COLUMN_NAME = @P2",
-                    &[&table_name, &column_name],
-                )
-                .await
-                .expect("Error describing table")
-                .into_first_result()
-                .await
-                .expect("Error describing table")
-                .iter()
-                .map(|row| row.get::<&str, _>(0).expect("Error fetching column name"))
-                .collect::<String>()
+                TABLE_NAME = '{table_name}' AND COLUMN_NAME = '{column_name}'",
+            ))
+            .await
+            .iter()
+            .map(|row| row.get::<&str, _>(0).expect("Error fetching column name"))
+            .collect::<String>()
                 == "YES".to_string()
         })
     }
@@ -204,22 +211,16 @@ impl DatabaseSniffer for MSSQLSniffer {
     ) -> Pin<Box<dyn Future<Output = Option<String>> + Send + '_>> {
         let table_name = table_name.to_string();
         let column_name = column_name.to_string();
-        
+
         Box::pin(async move {
-        self.client
-            .query(
+            self.query(&format!(
                 "SELECT COLUMN_DEFAULT
             FROM 
                 INFORMATION_SCHEMA.COLUMNS
             WHERE 
-                TABLE_NAME = @P1 AND COLUMN_NAME = @P2",
-                &[&table_name, &column_name],
-            )
+                TABLE_NAME = '{table_name}' AND COLUMN_NAME = '{column_name}'"
+            ))
             .await
-            .expect("Error describing table")
-            .into_first_result()
-            .await
-            .expect("Error describing table")
             .iter()
             .next()?
             .get::<&str, _>(0)
@@ -234,11 +235,10 @@ impl DatabaseSniffer for MSSQLSniffer {
     ) -> Pin<Box<dyn Future<Output = KeyType> + Send + '_>> {
         let table_name = table_name.to_string();
         let column_name = column_name.to_string();
-        
+
         Box::pin(async move {
             let field_key = self
-                .client
-                .query(
+                .query(&format!(
                     "WITH KeyColumns AS (
                     SELECT
                         SCHEMA_NAME(t.schema_id) AS schema_name,
@@ -273,14 +273,8 @@ impl DatabaseSniffer for MSSQLSniffer {
                     key_type
                 FROM
                     KeyColumns
-                WHERE table_name = @P1 and column_name = @P2",
-                    &[&table_name.to_string(), &column_name.to_string()],
-                )
-                .await
-                .expect("Error fetching key")
-                .into_first_result()
-                .await
-                .expect("Error fetching key");
+                WHERE table_name = '{table_name}' and column_name = '{column_name}'"
+                )).await;
 
             let field_key = field_key
                 .get(0)
@@ -312,7 +306,7 @@ impl DatabaseSniffer for MSSQLSniffer {
         let column_name = column_name.to_string();
 
         Box::pin(async move {
-            let auto_increment = self.client.query("SELECT
+            let auto_increment = self.query(&format!("SELECT
                     CASE
                         WHEN ic.SEED_VALUE IS NOT NULL THEN 'auto_increment'
                         ELSE ''
@@ -324,12 +318,8 @@ impl DatabaseSniffer for MSSQLSniffer {
                         LEFT JOIN
                     sys.identity_columns ic ON col.object_id = ic.object_id AND col.column_id = ic.column_id
                 WHERE
-                    tab.name = @P1 and col.name = @P1;", &[&table_name.to_string(), &column_name.to_string()])
-                                     .await
-                                     .expect("Error fetching key")
-                                     .into_first_result()
-                                     .await
-                                     .expect("Error fetching key");
+                    tab.name = '{table_name}' and col.name = '{column_name}';"))
+                                     .await;
 
             let auto_increment = if let Some(auto_increment) = auto_increment.get(0) {
                 auto_increment.get(0).expect("Error fetching key")
@@ -353,7 +343,7 @@ impl DatabaseSniffer for MSSQLSniffer {
         Box::pin(async move {
             let mut relations = Vec::new();
 
-            let sql = "SELECT
+            let sql = &format!("SELECT
                 pk_tab.name AS ReferencedTable,
                 pk_col.name AS ReferencedColumn,
                 fk_col.name AS ForeignKeyColumn
@@ -370,29 +360,12 @@ impl DatabaseSniffer for MSSQLSniffer {
                     INNER JOIN
                 sys.columns pk_col ON pk_col.column_id = fk_cols.referenced_column_id AND pk_col.object_id = pk_tab.object_id
             WHERE
-                fk_tab.name = @P1;";
+                fk_tab.name = '{table_name}';");
 
-            let rows = self
-                .client
-                .query(sql, &[&table_name])
-                .await
-                .expect("Error fetching references")
-                .into_first_result()
-                .await
-                .expect("Error fetching references");
-
-            for row in rows {
+            for row in self.query(sql).await {
                 let ref_table_name: &str = row.get(0).expect("Error fetching ref table name");
                 let ref_column_name: &str = row.get(1).expect("Error fetching ref column name");
                 let column_name: &str = row.get(2).expect("Error fetching column name");
-
-                #[cfg(test)]
-                {
-                    println!(
-                        "Column {} references {} ({})",
-                        column_name, ref_table_name, ref_column_name
-                    );
-                }
 
                 let from = ColumnId::new(&table_name, column_name);
                 let to = ColumnId::new(ref_table_name, ref_column_name);
@@ -417,7 +390,7 @@ impl DatabaseSniffer for MSSQLSniffer {
             let mut relations = Vec::new();
             let ref_table_name = table_name;
 
-            let sql = "SELECT
+            let sql = &format!("SELECT
                 fk_tab.name AS ReferencingTable,
                 fk_col.name AS ReferencingColumn,
                 pk_col.name AS ReferencedColumn
@@ -432,29 +405,12 @@ impl DatabaseSniffer for MSSQLSniffer {
                     INNER JOIN
                 sys.columns pk_col ON pk_col.object_id = fk.referenced_object_id AND pk_col.column_id = fk_cols.referenced_column_id
             WHERE
-                fk.referenced_object_id = OBJECT_ID(@P1);";
+                fk.referenced_object_id = OBJECT_ID('{ref_table_name}');");
 
-            let rows = self
-                .client
-                .query(sql, &[&ref_table_name])
-                .await
-                .expect("Error fetching referenced by")
-                .into_first_result()
-                .await
-                .expect("Error fetching referenced by");
-
-            for row in rows {
+            for row in self.query(sql).await {
                 let table_name: &str = row.get(0).expect("Error fetching table name");
                 let column_name: &str = row.get(1).expect("Error fetching column name");
                 let ref_column_name: &str = row.get(2).expect("Error fetching ref column name");
-
-                #[cfg(test)]
-                {
-                    println!(
-                        "Column {} is referenced by {} ({})",
-                        ref_column_name, table_name, column_name
-                    );
-                }
 
                 let from = ColumnId::new(table_name, column_name);
                 let to = ColumnId::new(&ref_table_name, ref_column_name);
@@ -476,10 +432,9 @@ impl DatabaseSniffer for MSSQLSniffer {
         to: &Vec<ColumnId>,
         rel_owner: bool,
     ) -> Pin<Box<dyn Future<Output = RelationType> + Send + '_>> {
-
         let from = (*from).clone();
         let to = (*to).clone();
-        
+
         Box::pin(async move {
             // TODO: Make this work for multiple columns reference
             let from_table = from[0].table();
