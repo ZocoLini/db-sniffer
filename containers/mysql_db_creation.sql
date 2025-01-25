@@ -13,9 +13,16 @@ create table Person (
     birthdate date,
     created timestamp,
     department_id int,
-    salario float,
+    salario decimal(19, 2),
+    salario_extra float,
     paga_extra double,
     foreign key (department_id) references Department(id) # one-to-many
+);
+
+create table Developer (
+    id int primary key,
+    programming_language varchar(255),
+    foreign key (id) references Person(id)
 );
 
 create table Address (
@@ -60,7 +67,8 @@ INSERT INTO Department (name, abreviation) VALUES
                                                ('Marketing', 'MKT'),
                                                ('Development', 'DEV'),
                                                ('Human Resources', 'HRE'),
-                                               ('Finance', 'FIN');
+                                               ('Finance', 'FIN'),
+                                               ('Development2', 'DE2');
 
 -- Insert Person data
 INSERT INTO Person (name, age, birthdate, created, department_id) VALUES
@@ -68,7 +76,19 @@ INSERT INTO Person (name, age, birthdate, created, department_id) VALUES
                                                        ('Emma Wilson', 28, '1996-07-22', NOW(), 2),
                                                        ('Michael Brown', 42, '1982-11-30', NOW(), 2),
                                                        ('Sarah Davis', 31, '1993-05-08', NOW(), 3),
-                                                       ('James Johnson', 45, '1979-09-14', NOW(), 4);
+                                                       ('James Johnson', 45, '1979-09-14', NOW(), 4),
+                                                       ('John Doe', 35, '1989-03-15', NOW(), 6),
+                                                       ('Jane Doe', 28, '1996-07-22', NOW(), 6),
+                                                       ('Michael Doe', 42, '1982-11-30', NOW(), 6),
+                                                       ('Sarah Doe', 31, '1993-05-08', NOW(), 6),
+                                                       ('James Doe', 45, '1979-09-14', NOW(), 6);
+
+INSERT INTO Developer (id, programming_language) VALUES
+                                                  (6, 'Java'),
+                                                  (7, 'Python'),
+                                                  (8, 'JavaScript'),
+                                                  (9, 'C#'),
+                                                  (10, 'Ruby');
 
 -- Insert Address data (one-to-one with Person)
 INSERT INTO Address (street, city, postal_code, person_id) VALUES

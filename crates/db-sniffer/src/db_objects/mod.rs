@@ -20,7 +20,7 @@ pub enum ColumnType {
 
 impl FromStr for ColumnType {
     type Err = ();
-
+    
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "int" | "integer" => Ok(ColumnType::Integer),

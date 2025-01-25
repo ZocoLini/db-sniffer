@@ -20,7 +20,8 @@ create table Person (
     birthdate date,
     created datetime,
     department_id int,
-    salario float,
+    salario decimal(19, 2),
+    salario_extra float,
     paga_extra double precision,
     foreign key (department_id) references Department(id) -- one-to-many
 );
@@ -76,12 +77,12 @@ INSERT INTO Department (name, abreviation) VALUES
                                   ('Finance', 'FIN');
 go
 -- Insert Person data
-INSERT INTO Person (name, age, birthdate, created, department_id) VALUES
-                                                                      ('John Smith', 35, '1989-03-15', GETDATE(), 1),
-                                                                      ('Emma Wilson', 28, '1996-07-22', GETDATE(), 2),
-                                                                      ('Michael Brown', 42, '1982-11-30', GETDATE(), 2),
-                                                                      ('Sarah Davis', 31, '1993-05-08', GETDATE(), 3),
-                                                                      ('James Johnson', 45, '1979-09-14', GETDATE(), 4);
+INSERT INTO Person (name, age, birthdate, created, department_id, salario) VALUES
+                                                                      ('John Smith', 35, '1989-03-15', GETDATE(), 1, 20.90),
+                                                                      ('Emma Wilson', 28, '1996-07-22', GETDATE(), 2,20.90),
+                                                                      ('Michael Brown', 42, '1982-11-30', GETDATE(), 2, 20.90),
+                                                                      ('Sarah Davis', 31, '1993-05-08', GETDATE(), 3, 20.90),
+                                                                      ('James Johnson', 45, '1979-09-14', GETDATE(), 4, 20.90);
 
 go
 -- Insert Address data (one-to-one with Person)
