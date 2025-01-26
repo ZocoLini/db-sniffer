@@ -50,8 +50,15 @@ pub async fn start_hibernate_test(conn_str: &str, db_dependency: maven::Dependen
 
     container.start();
 
+    // TODO: Write this in a log file
+    println!("Starting introspection");
+    let time = std::time::Instant::now();
+    
     let test_result = aux(conn_str, db_dependency, &test_dir).await;
 
+    let elapsed = time.elapsed();
+    println!("Introspection took {:?}", elapsed);
+    
     container.stop();
 
     let output = match test_result {

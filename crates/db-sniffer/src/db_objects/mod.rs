@@ -48,6 +48,7 @@ pub enum GenerationType {
     AutoIncrement,
 }
 
+// TODO: Remove Foreign
 #[derive(PartialEq)]
 pub enum KeyType {
     Primary(GenerationType),
@@ -80,6 +81,10 @@ impl Table {
         }
     }
 
+    pub fn is_col_fk(&self, column: &str) -> bool {
+        self.references.iter().any(|r| r.from.iter().any(|c| c.name == column))
+    }
+    
     pub fn add_column(&mut self, column: Column) {
         self.columns.push(column);
     }
@@ -96,11 +101,7 @@ impl Table {
         self.columns
             .iter()
             .filter(|&c| {
-                return if let KeyType::Primary(_) = c.key() {
-                    true
-                } else {
-                    false
-                };
+                matches!(c.key(), KeyType::Primary(_))
             })
             .collect()
     }

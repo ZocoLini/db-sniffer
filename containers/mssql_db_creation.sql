@@ -68,6 +68,36 @@ create table Person_Project (
 );
 go
 
+-- Multiple key references
+create table ComposedPKTable (
+                                 fist_key int,
+                                 second_key int,
+                                 other_field varchar(255),
+                                 primary key (fist_key, second_key)
+);
+go
+create table ComposedFKAsPKTable (
+    fist_key int,
+    second_key int,
+    a int,
+    b int,
+    other_field varchar(255),
+    primary key (fist_key, second_key),
+    foreign key (fist_key, second_key) references ComposedPKTable(fist_key, second_key),
+    foreign key (a, b) references ComposedPKTable(fist_key, second_key)
+);
+go
+create table ComposedFKTable (
+                                 id int primary key identity(1, 1),
+                                 fist_key int,
+                                 second_key int,
+                                 a int,
+                                 b int,
+                                 foreign key (fist_key, second_key) references ComposedPKTable(fist_key, second_key)
+
+);
+go
+
 -- Insert Department data (many-to-one with Person)
 INSERT INTO Department (name, abreviation) VALUES
                                   ('Engineering', 'ENG'),
