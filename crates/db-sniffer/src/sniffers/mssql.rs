@@ -106,7 +106,7 @@ impl DatabaseSniffer for MSSQLSniffer {
                 .await
                 .expect("Error fetching data")
                 .into_iter()
-                .map(|row| RowGetter::MSSQLRow(row))
+                .map(RowGetter::MSSQLRow)
                 .collect()
         })
     }
@@ -198,7 +198,7 @@ impl DatabaseSniffer for MSSQLSniffer {
             .iter()
             .map(|row| row.get::<&str>(0))
             .collect::<String>()
-                == "YES".to_string()
+                == *"YES"
         })
     }
 
@@ -218,11 +218,8 @@ impl DatabaseSniffer for MSSQLSniffer {
                         WHERE 
                             TABLE_NAME = '{table_name}' AND COLUMN_NAME = '{column_name}'"
             ))
-            .await
-            .iter()
-            .next()?
-            .opt_get::<&str>(0)
-            .and_then(|s| Some(s.to_string()))
+            .await.first()?
+            .opt_get::<&str>(0).map(|s| s.to_string())
         })
     }
 
@@ -239,7 +236,6 @@ impl DatabaseSniffer for MSSQLSniffer {
                 .query(&format!(
                     "WITH KeyColumns AS (
                     SELECT
-                        SCHEMA_NAME(t.schema_id) AS schema_name,
                         t.name AS table_name,
                         c.name AS column_name,
                         CASE
@@ -274,8 +270,7 @@ impl DatabaseSniffer for MSSQLSniffer {
                 WHERE table_name = '{table_name}' and column_name = '{column_name}'"
                 )).await;
 
-            let field_key = field_key
-                .get(0)
+            let field_key = field_key.first()
                 .expect("Error fetching key")
                 .opt_get(0)
                 .unwrap_or("NO KEY");
@@ -319,16 +314,13 @@ impl DatabaseSniffer for MSSQLSniffer {
                     tab.name = '{table_name}' and col.name = '{column_name}';"))
                                      .await;
 
-            let auto_increment = if let Some(auto_increment) = auto_increment.get(0) {
+            let auto_increment = if let Some(auto_increment) = auto_increment.first() {
                 auto_increment.get(0)
             } else {
                 ""
             };
 
-            match auto_increment {
-                "auto_increment" => true,
-                _ => false,
-            }
+            matches!(auto_increment, "auto_increment")
         })
     }
 
@@ -339,12 +331,12 @@ impl DatabaseSniffer for MSSQLSniffer {
         let table_name = table_name.to_string();
 
         Box::pin(async move {
-            let mut relations = Vec::new();
 
             let sql = &format!("SELECT
                 pk_tab.name AS ReferencedTable,
                 pk_col.name AS ReferencedColumn,
-                fk_col.name AS ForeignKeyColumn
+                fk_col.name AS ForeignKeyColumn,
+                fk.object_id AS fk_id
             FROM
                 sys.foreign_keys fk
                     INNER JOIN
@@ -358,22 +350,35 @@ impl DatabaseSniffer for MSSQLSniffer {
                     INNER JOIN
                 sys.columns pk_col ON pk_col.column_id = fk_cols.referenced_column_id AND pk_col.object_id = pk_tab.object_id
             WHERE
-                fk_tab.name = '{table_name}';");
+                fk_tab.name = '{table_name}'
+            ORDER BY fk.object_id;");
 
+            let mut relations = Vec::new();
+            
+            let mut last_fk_id = None;
+            let mut from = Vec::new();
+            let mut to = Vec::new();
+            
             for row in self.query(sql).await {
                 let ref_table_name: &str = row.get(0);
                 let ref_column_name: &str = row.get(1);
                 let column_name: &str = row.get(2);
+                let fk_id: i32 = row.get(3);
 
-                let from = ColumnId::new(&table_name, column_name);
-                let to = ColumnId::new(ref_table_name, ref_column_name);
+                if last_fk_id.is_some() && last_fk_id.unwrap() != fk_id {
+                    relations.push((from, to));
+                    from = Vec::new();
+                    to = Vec::new();
+                }
 
-                let from = vec![from];
-                let to = vec![to];
+                from.push(ColumnId::new(&table_name, column_name));
+                to.push(ColumnId::new(ref_table_name, ref_column_name));
 
-                relations.push((from, to));
+                last_fk_id.replace(fk_id);
             }
 
+            if !from.is_empty() { relations.push((from, to));  }
+            
             relations
         })
     }
@@ -385,13 +390,13 @@ impl DatabaseSniffer for MSSQLSniffer {
         let table_name = table_name.to_string();
 
         Box::pin(async move {
-            let mut relations = Vec::new();
-            let ref_table_name = table_name;
-
+            let ref_table_name = table_name.as_str();
+            
             let sql = &format!("SELECT
                 fk_tab.name AS ReferencingTable,
                 fk_col.name AS ReferencingColumn,
-                pk_col.name AS ReferencedColumn
+                pk_col.name AS ReferencedColumn,
+                fk.object_id AS fk_id
             FROM
                 sys.foreign_keys fk
                     INNER JOIN
@@ -403,22 +408,35 @@ impl DatabaseSniffer for MSSQLSniffer {
                     INNER JOIN
                 sys.columns pk_col ON pk_col.object_id = fk.referenced_object_id AND pk_col.column_id = fk_cols.referenced_column_id
             WHERE
-                fk.referenced_object_id = OBJECT_ID('{ref_table_name}');");
+                fk.referenced_object_id = OBJECT_ID('{ref_table_name}')
+            ORDER BY fk.object_id;");
 
+            let mut relations = Vec::new();
+            
+            let mut last_fk_id = None;
+            let mut from = Vec::new();
+            let mut to = Vec::new();
+            
             for row in self.query(sql).await {
                 let table_name: &str = row.get(0);
                 let column_name: &str = row.get(1);
                 let ref_column_name: &str = row.get(2);
+                let fk_id: i32 = row.get(3);
 
-                let from = ColumnId::new(table_name, column_name);
-                let to = ColumnId::new(&ref_table_name, ref_column_name);
+                if last_fk_id.is_some() && last_fk_id.unwrap() != fk_id {
+                    relations.push((from, to));
+                    from = Vec::new();
+                    to = Vec::new();
+                }
+                
+                from.push(ColumnId::new(table_name, column_name));
+                to.push(ColumnId::new(ref_table_name, ref_column_name));
 
-                let from = vec![from];
-                let to = vec![to];
-
-                relations.push((from, to));
+                last_fk_id.replace(fk_id);
             }
 
+            if !from.is_empty() { relations.push((from, to));  }
+            
             relations
         })
     }

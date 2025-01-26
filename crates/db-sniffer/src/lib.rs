@@ -1,3 +1,5 @@
+extern crate core;
+
 use crate::sniffers::{SniffResults};
 use getset::Getters;
 use std::str::FromStr;

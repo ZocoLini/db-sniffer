@@ -1,6 +1,9 @@
+#![allow(clippy::zombie_processes)]
+
 use std::path::PathBuf;
 use std::time::Duration;
 use std::{process, thread};
+use std::env::args;
 
 fn containers_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../containers")
@@ -38,7 +41,7 @@ impl DBContainer {
         self.build();
 
         process::Command::new("docker")
-            .args(&[
+            .args([
                 "run",
                 "--name",
                 CONTAINER_NAME,
@@ -56,7 +59,7 @@ impl DBContainer {
         // docker build -t <image> -f <file> .
         process::Command::new("docker")
             .current_dir(containers_dir())
-            .args(&["build", "-t", &self.image, "-f", &self.build_file, "."])
+            .args(["build", "-t", &self.image, "-f", &self.build_file, "."])
             .spawn()
             .expect("Failed to build container for testing")
             .wait()
@@ -67,14 +70,14 @@ impl DBContainer {
         // docker stop <name>
         // docker rm <name>
         process::Command::new("docker")
-            .args(&["stop", CONTAINER_NAME])
+            .args(["stop", CONTAINER_NAME])
             .spawn()
             .expect("Failed to stop Docker container")
             .wait()
             .expect("Failed to wait for Docker container to stop");
 
         process::Command::new("docker")
-            .args(&["rm", CONTAINER_NAME])
+            .args(["rm", CONTAINER_NAME])
             .spawn()
             .expect("Failed to remove Docker container")
             .wait()

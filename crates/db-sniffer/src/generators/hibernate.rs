@@ -5,6 +5,7 @@ use crate::naming;
 use crate::sniffers::SniffResults;
 use dotjava::{Class, Field, Interface, Type, Visibility};
 use std::cmp::PartialEq;
+use std::collections::HashMap;
 use std::fs;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
@@ -105,7 +106,7 @@ impl<'a> XMLGenerator<'a> {
         // TODO: Ugly code.
         //  Refactor.
         //  Enum for the diferent types os supported db to avoid match strings
-        
+
         let properties = match self.sniff_results.conn_params().db.as_str() {
             "mysql" => format!(
                 r#"
@@ -137,7 +138,6 @@ impl<'a> XMLGenerator<'a> {
                 println!("Unknown database type: {}", conn_params.db);
                 "".to_string()
             }
-
         };
 
         format!(
@@ -198,6 +198,9 @@ impl<'a> XMLGenerator<'a> {
 
     fn generate_table_xml(&self, table: &Table) -> String {
         let package = &self.package;
+
+        let mut ref_tables: HashMap<String, i32> = HashMap::new();
+
         let xml = format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE hibernate-mapping PUBLIC
@@ -217,8 +220,8 @@ impl<'a> XMLGenerator<'a> {
             table.name(),
             generate_id_xml(table, package),
             generate_properties_xml(table),
-            generate_references_to_xml(table, package, self.sniff_results.database()),
-            generate_referenced_by_xml(table, package, self.sniff_results.database())
+            generate_references_to_xml(table, package, self.sniff_results.database(), &mut ref_tables),
+            generate_referenced_by_xml(table, package, self.sniff_results.database(), &mut ref_tables)
         );
 
         return xml;
@@ -288,12 +291,11 @@ impl<'a> XMLGenerator<'a> {
                     continue;
                 }
 
-                if KeyType::Foreign == *column.key() {
+                if table.is_col_fk(column.name()) {
                     continue;
                 }
 
                 // TODO: decimal type not working with big decimal as it is defined right now
-                
                 result = result.add(&format!(
                     r#"
     <property name="{}" type="{}">
@@ -312,10 +314,11 @@ impl<'a> XMLGenerator<'a> {
             format!(
                 r#"<column name="{}"{}{}/>"#,
                 column.name(),
-                column
-                    .not_nullable()
-                    .then(|| " not-null=\"true\"")
-                    .unwrap_or(""),
+                if column.not_nullable() {
+                    " not-null=\"true\""
+                } else {
+                    ""
+                },
                 if let KeyType::Unique = column.key() {
                     " unique=\"true\""
                 } else {
@@ -324,7 +327,24 @@ impl<'a> XMLGenerator<'a> {
             )
         }
 
-        fn generate_references_to_xml(table: &Table, package: &str, database: &Database) -> String {
+        fn generate_multi_column_xml(columns: &Vec<&Column>) -> String {
+            let mut result = "".to_string();
+
+            for column in columns {
+                result = result.add(&generate_column_xml(column)).add("\n        ");
+            }
+
+            result
+        }
+
+        // TODO: This function and the bottom one are really similar. Maybe they can be merged
+        // TODO: This many parameters makes this function ugly af
+        fn generate_references_to_xml(
+            table: &Table,
+            package: &str,
+            database: &Database,
+            ref_tables: &mut HashMap<String, i32>,
+        ) -> String {
             let mut result = "\n    <!-- References -->".to_string();
 
             table.references().iter().for_each(|r| {
@@ -334,30 +354,37 @@ impl<'a> XMLGenerator<'a> {
                     .key()
                 {
                     result.push_str(&generate_relation_xml(
-                        r, package, database, true, false, false,
+                        r, package, database, true, false, false, ref_tables,
                     ));
                 } else {
                     result.push_str(&generate_relation_xml(
-                        r, package, database, true, true, true,
+                        r, package, database, true, true, true, ref_tables,
                     ));
                 };
             });
 
             result
         }
-
-        fn generate_referenced_by_xml(table: &Table, package: &str, database: &Database) -> String {
+        
+        // TODO: This many parameters makes this function ugly af
+        fn generate_referenced_by_xml(
+            table: &Table,
+            package: &str,
+            database: &Database,
+            ref_tables: &mut HashMap<String, i32>,
+        ) -> String {
             let mut result = "\n    <!-- Referenced by -->".to_string();
 
             table.referenced_by().iter().for_each(|r| {
                 result.push_str(&generate_relation_xml(
-                    r, package, database, false, true, true,
+                    r, package, database, false, true, true, ref_tables,
                 ));
             });
 
             result
         }
 
+        // TODO: This many parameters makes this function ugly af
         fn generate_relation_xml(
             relation: &Relation,
             package: &str,
@@ -365,8 +392,13 @@ impl<'a> XMLGenerator<'a> {
             rel_owner: bool,
             insert: bool,
             update: bool,
+            ref_tables: &mut HashMap<String, i32>,
         ) -> String {
-            let col = database.column(&relation.from()[0]).expect("Should exists");
+            let cols: Vec<&Column> = relation
+                .from()
+                .iter()
+                .map(|c| database.column(c).unwrap())
+                .collect();
 
             let ref_table_name = if rel_owner {
                 relation.to()[0].table()
@@ -374,13 +406,21 @@ impl<'a> XMLGenerator<'a> {
                 relation.from()[0].table()
             };
 
+            let ref_table_name_count = if let Some(count) = ref_tables.get_mut(ref_table_name) {
+                *count += 1;
+                format!("{}{}", ref_table_name, count)
+            } else {
+                ref_tables.insert(ref_table_name.to_string(), 1);
+                ref_table_name.to_string()
+            };
+            
             match relation.r#type() {
                 RelationType::OneToOne => {
+                    // TODO: Maybe the OneToOne should implement the multicolumn reference.
                     format!(
                         r#"
-    <one-to-one name="{}" class="{}.{}" lazy="proxy" />"#,
-                        naming::to_lower_camel_case(ref_table_name),
-                        package,
+    <one-to-one name="{}" class="{package}.{}" lazy="proxy" />"#,
+                        naming::to_lower_camel_case(&ref_table_name_count),
                         naming::to_upper_camel_case(ref_table_name)
                     )
                 }
@@ -391,12 +431,11 @@ impl<'a> XMLGenerator<'a> {
       <key>
         {}
       </key>
-      <one-to-many class="{}.{}" />
+      <one-to-many class="{package}.{}" />
     </set>"#,
-                        naming::to_lower_camel_case(ref_table_name),
-                        ref_table_name,
-                        generate_column_xml(col),
-                        package,
+                        naming::to_lower_camel_case(&ref_table_name_count),
+                        ref_table_name_count,
+                        generate_multi_column_xml(&cols),
                         naming::to_upper_camel_case(ref_table_name)
                     )
                 }
@@ -413,29 +452,27 @@ impl<'a> XMLGenerator<'a> {
 
                     format!(
                         r#"
-    <many-to-one name="{}" class="{}.{}" {insert_update_str} fetch="select">
+    <many-to-one name="{}" class="{package}.{}" {insert_update_str} fetch="select">
       {}
     </many-to-one>"#,
-                        naming::to_lower_camel_case(ref_table_name),
-                        package,
+                        naming::to_lower_camel_case(&ref_table_name_count),
                         naming::to_upper_camel_case(ref_table_name),
-                        generate_column_xml(col)
+                        generate_multi_column_xml(&cols)
                     )
                 }
-                RelationType::ManyToMany | RelationType::Unknown => {
+                RelationType::ManyToMany => {
                     format!(
                         r#"
-    <bag name="{}s" table="{}" lazy="true" fetch="select">
+    <set name="{}s" table="{}" lazy="true" fetch="select">
       <key>
         {}
       </key>
-      <many-to-many class="{}.{}" />
-    </bag>
+      <many-to-many class="{package}.{}" />
+    </set>
     "#,
-                        naming::to_lower_camel_case(ref_table_name),
-                        ref_table_name,
-                        generate_column_xml(col),
-                        package,
+                        naming::to_lower_camel_case(&ref_table_name_count),
+                        ref_table_name_count,
+                        generate_multi_column_xml(&cols),
                         naming::to_upper_camel_case(ref_table_name),
                     )
                 }
@@ -455,15 +492,16 @@ impl<'a> XMLGenerator<'a> {
             table
                 .columns()
                 .iter()
-                .filter(|c| *c.key() != KeyType::Foreign)
-                .map(|c| generate_field(c))
+                // TODO: If removed, the pk of Developer doesn't get generated
+                .filter(|c| *c.key() != KeyType::Foreign) 
+                .map(generate_field)
                 .collect()
         } else {
             let mut fields: Vec<Field> = table
                 .columns()
                 .iter()
                 .filter(|c| !table_id.contains(c))
-                .map(|c| generate_field(c))
+                .map(generate_field)
                 .collect();
 
             fields.push(Field::new(
@@ -476,11 +514,20 @@ impl<'a> XMLGenerator<'a> {
             fields
         };
 
-        // Adding Fields based on relations
+        // TODO: Reduced the amout of code repetitions in the following two for-eachs
+        let mut rel_tables: HashMap<&String, i32> = HashMap::new();
+
         table.references().iter().for_each(|r| {
             let ref_table_name = r.to()[0].table();
 
-            let field_name = naming::to_lower_camel_case(ref_table_name);
+            let field_name = if let Some(count) = rel_tables.get_mut(ref_table_name) {
+                *count += 1;
+                format!("{}{}", naming::to_lower_camel_case(ref_table_name), count)
+            } else {
+                rel_tables.insert(ref_table_name, 1);
+                naming::to_lower_camel_case(ref_table_name).to_string()
+            };
+
             let field_type = Type::new(naming::to_upper_camel_case(ref_table_name), "".to_string());
 
             let field = gen_rel_field(r.r#type(), field_name, field_type);
@@ -491,9 +538,15 @@ impl<'a> XMLGenerator<'a> {
         table.referenced_by().iter().for_each(|r| {
             let ref_table_name = r.from()[0].table();
 
-            let field_name = naming::to_lower_camel_case(ref_table_name);
-            let field_type =
-                Type::new(naming::to_upper_camel_case(ref_table_name), package.clone());
+            let field_name = if let Some(count) = rel_tables.get_mut(ref_table_name) {
+                *count += 1;
+                format!("{}{}", naming::to_lower_camel_case(ref_table_name), count)
+            } else {
+                rel_tables.insert(ref_table_name, 1);
+                naming::to_lower_camel_case(ref_table_name).to_string()
+            };
+
+            let field_type = Type::new(naming::to_upper_camel_case(ref_table_name), "".to_string());
 
             let field = gen_rel_field(r.r#type(), field_name, field_type);
 
@@ -502,11 +555,7 @@ impl<'a> XMLGenerator<'a> {
 
         // Adding setters and getters
 
-        let methods = fields
-            .iter()
-            .map(|f| f.getters_setters())
-            .flatten()
-            .collect();
+        let methods = fields.iter().flat_map(|f| f.getters_setters()).collect();
 
         let java_class = Class::new(class_name.clone(), package.clone(), fields, methods);
 
@@ -519,11 +568,7 @@ impl<'a> XMLGenerator<'a> {
 
         let fields: Vec<Field> = table.ids().iter().map(|c| generate_field(c)).collect();
 
-        let methods = fields
-            .iter()
-            .map(|f| f.getters_setters())
-            .flatten()
-            .collect();
+        let methods = fields.iter().flat_map(|f| f.getters_setters()).collect();
 
         let mut java_class = Class::new(
             format!("{}Id", class_name),
@@ -572,7 +617,9 @@ fn column_type_to_java_type(column_type: &ColumnType) -> Type {
         ColumnType::Double => Type::double(),
         ColumnType::Float => Type::float(),
         ColumnType::Char => Type::character(),
-        ColumnType::Decimal | ColumnType::Numeric => Type::new("BigDecimal".to_string(), "java.math".to_string()),
+        ColumnType::Decimal | ColumnType::Numeric => {
+            Type::new("BigDecimal".to_string(), "java.math".to_string())
+        }
     }
 }
 
@@ -619,8 +666,8 @@ fn generate_field(column: &Column) -> Field {
 }
 
 fn gen_rel_field(rel_type: &RelationType, field_name: String, field_type: Type) -> Field {
-    let field = match rel_type {
-        RelationType::OneToMany | RelationType::ManyToMany | RelationType::Unknown => {
+    match rel_type {
+        RelationType::OneToMany | RelationType::ManyToMany => {
             let mut rel_type = Type::new("Set".to_string(), "java.util".to_string());
             rel_type.add_generic(field_type);
 
@@ -634,8 +681,7 @@ fn gen_rel_field(rel_type: &RelationType, field_name: String, field_type: Type) 
         RelationType::OneToOne | RelationType::ManyToOne => {
             Field::new(field_name, field_type, Some(Visibility::Private), None)
         }
-    };
-    field
+    }
 }
 
 fn escape_xml_special_chars(text: &str) -> String {
