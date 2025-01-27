@@ -1,8 +1,10 @@
+use std::fmt::format;
 use std::fs;
 use std::process::Output;
 use db_sniffer::generators;
-use crate::{containers, hibernate, maven, test_dir};
+use crate::{containers, hibernate, logs, maven, test_dir};
 use crate::containers::DBContainer;
+use crate::logs::LogLevel;
 use crate::maven::MavenProject;
 
 fn move_config_and_mapping_files_to_resources(maven_project: &MavenProject) {
@@ -49,15 +51,8 @@ pub async fn start_hibernate_test(conn_str: &str, db_dependency: maven::Dependen
     let test_dir = test_dir::get();
 
     container.start();
-
-    // TODO: Write this in a log file
-    println!("Starting introspection");
-    let time = std::time::Instant::now();
     
     let test_result = aux(conn_str, db_dependency, &test_dir).await;
-
-    let elapsed = time.elapsed();
-    println!("Introspection took {:?}", elapsed);
     
     container.stop();
 
@@ -75,7 +70,7 @@ pub async fn start_hibernate_test(conn_str: &str, db_dependency: maven::Dependen
     
     async fn aux(conn_str: &str, db_dependency: maven::Dependencie, test_dir: &str) -> Result<Output, String> {
         // Creating a Maven archetype project
-        let mut maven_project = MavenProject::new(&test_dir::get());
+        let mut maven_project = MavenProject::new(test_dir::get());
 
         maven_project.add_dependency(db_dependency);
 
@@ -87,14 +82,26 @@ pub async fn start_hibernate_test(conn_str: &str, db_dependency: maven::Dependen
         fs::create_dir_all(&target_path)
             .map_err(|e| format!("Failed to create target path -> {}", e))?;
 
+        let time = std::time::Instant::now();
+        logs::log("Starting introspection", LogLevel::Info);
+        
         let sniff_results = db_sniffer::sniff(conn_str)
             .await
             .map_err(|e| format!("Failed to sniff the database -> {}", e))?;
 
+        let elapsed = time.elapsed();
+        logs::log(&format!("Introspection took {:?}", elapsed), LogLevel::Info);
+        
         let generator = generators::hibernate::XMLGenerator::new(&sniff_results, &target_path)
             .ok_or("Failed to create XMLGenerator")?;
 
+        let time = std::time::Instant::now();
+        logs::log("Starting generation", LogLevel::Info);
+        
         generator.generate();
+
+        let elapsed = time.elapsed();
+        logs::log(&format!("Generation took {:?}", elapsed), LogLevel::Info);
 
         // Move the resources to the resources folder
         move_config_and_mapping_files_to_resources(&maven_project);

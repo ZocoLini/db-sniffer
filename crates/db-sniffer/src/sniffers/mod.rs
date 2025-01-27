@@ -74,7 +74,7 @@ impl RowGetter {
 trait DatabaseSniffer {
     // Query the db
     fn query(&mut self, query: &str) -> Pin<Box<dyn Future<Output = Vec<RowGetter>> + Send + '_>>;
-    
+
     // Obtein specific metadata
     fn query_dbs_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>>;
     fn query_tab_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>>;
