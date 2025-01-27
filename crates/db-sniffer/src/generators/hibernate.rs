@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
+use std::slice::Iter;
 
 pub struct AnnotatedClassGenerator;
 
@@ -220,8 +221,18 @@ impl<'a> XMLGenerator<'a> {
             table.name(),
             generate_id_xml(table, package),
             generate_properties_xml(table),
-            generate_references_to_xml(table, package, self.sniff_results.database(), &mut ref_tables),
-            generate_referenced_by_xml(table, package, self.sniff_results.database(), &mut ref_tables)
+            generate_references_to_xml(
+                table,
+                package,
+                self.sniff_results.database(),
+                &mut ref_tables
+            ),
+            generate_referenced_by_xml(
+                table,
+                package,
+                self.sniff_results.database(),
+                &mut ref_tables
+            )
         );
 
         return xml;
@@ -365,7 +376,7 @@ impl<'a> XMLGenerator<'a> {
 
             result
         }
-        
+
         // TODO: This many parameters makes this function ugly af
         fn generate_referenced_by_xml(
             table: &Table,
@@ -413,7 +424,7 @@ impl<'a> XMLGenerator<'a> {
                 ref_tables.insert(ref_table_name.to_string(), 1);
                 ref_table_name.to_string()
             };
-            
+
             match relation.r#type() {
                 RelationType::OneToOne => {
                     // TODO: Maybe the OneToOne should implement the multicolumn reference.
@@ -493,7 +504,7 @@ impl<'a> XMLGenerator<'a> {
                 .columns()
                 .iter()
                 // TODO: If removed, the pk of Developer doesn't get generated
-                .filter(|c| *c.key() != KeyType::Foreign) 
+                .filter(|c| *c.key() != KeyType::Foreign)
                 .map(generate_field)
                 .collect()
         } else {
@@ -514,52 +525,57 @@ impl<'a> XMLGenerator<'a> {
             fields
         };
 
-        // TODO: Reduced the amout of code repetitions in the following two for-eachs
-        let mut rel_tables: HashMap<&String, i32> = HashMap::new();
+        let mut used_names: HashMap<&String, i32> = HashMap::new();
 
-        table.references().iter().for_each(|r| {
-            let ref_table_name = r.to()[0].table();
-
-            let field_name = if let Some(count) = rel_tables.get_mut(ref_table_name) {
-                *count += 1;
-                format!("{}{}", naming::to_lower_camel_case(ref_table_name), count)
-            } else {
-                rel_tables.insert(ref_table_name, 1);
-                naming::to_lower_camel_case(ref_table_name).to_string()
-            };
-
-            let field_type = Type::new(naming::to_upper_camel_case(ref_table_name), "".to_string());
-
-            let field = gen_rel_field(r.r#type(), field_name, field_type);
-
-            fields.push(field);
-        });
-
-        table.referenced_by().iter().for_each(|r| {
-            let ref_table_name = r.from()[0].table();
-
-            let field_name = if let Some(count) = rel_tables.get_mut(ref_table_name) {
-                *count += 1;
-                format!("{}{}", naming::to_lower_camel_case(ref_table_name), count)
-            } else {
-                rel_tables.insert(ref_table_name, 1);
-                naming::to_lower_camel_case(ref_table_name).to_string()
-            };
-
-            let field_type = Type::new(naming::to_upper_camel_case(ref_table_name), "".to_string());
-
-            let field = gen_rel_field(r.r#type(), field_name, field_type);
-
-            fields.push(field);
-        });
-
-        // Adding setters and getters
+        gen_rel_fields(
+            table.references().iter(),
+            true,
+            &mut fields,
+            &mut used_names,
+        );
+        gen_rel_fields(
+            table.referenced_by().iter(),
+            false,
+            &mut fields,
+            &mut used_names,
+        );
 
         let methods = fields.iter().flat_map(|f| f.getters_setters()).collect();
 
         let java_class = Class::new(class_name.clone(), package.clone(), fields, methods);
 
-        java_class.into()
+        return java_class.into();
+        
+        // TODO: Ugly function again
+        fn gen_rel_fields<'a>(
+            relations: Iter<'a, Relation>,
+            rel_owner: bool,
+            fields: &mut Vec<Field>,
+            used_name: &mut HashMap<&'a String, i32>,
+        ) {
+            relations.for_each(|r| {
+                let ref_table_name = if rel_owner {
+                    r.to()[0].table()
+                } else {
+                    r.from()[0].table()
+                };
+
+                let field_name = if let Some(count) = used_name.get_mut(ref_table_name) {
+                    *count += 1;
+                    format!("{}{}", naming::to_lower_camel_case(ref_table_name), count)
+                } else {
+                    used_name.insert(ref_table_name, 1);
+                    naming::to_lower_camel_case(ref_table_name).to_string()
+                };
+
+                let field_type =
+                    Type::new(naming::to_upper_camel_case(ref_table_name), "".to_string());
+
+                let field = gen_rel_field(r.r#type(), field_name, field_type);
+
+                fields.push(field);
+            });
+        }
     }
 
     fn generate_composite_id(&self, table: &Table) -> String {
