@@ -1,5 +1,6 @@
 use crate::db_objects::{
-    Column, ColumnType, Database, GenerationType, KeyType, Relation, RelationType, Table,
+    Column, ColumnType, Database, Dbms, GenerationType, KeyType, Metadata, Relation, RelationType,
+    Table,
 };
 use crate::naming;
 use crate::sniffers::SniffResults;
@@ -104,42 +105,42 @@ impl<'a> XMLGenerator<'a> {
             .collect::<Vec<String>>()
             .join("\n         ");
 
-        // TODO: Ugly code.
-        //  Refactor.
-        //  Enum for the diferent types os supported db to avoid match strings
-
-        let properties = match self.sniff_results.conn_params().db.as_str() {
-            "mysql" => format!(
-                r#"
-        <property name="hibernate.dialect">org.hibernate.dialect.MySQLDialect</property>
-        <property name="hibernate.connection.driver_class">com.mysql.cj.jdbc.Driver</property>
-        <property name="hibernate.connection.url">jdbc:mysql://{}:{}/{}</property>
-        <property name="hibernate.connection.username">{}</property>
-        <property name="hibernate.connection.password">{}</property>"#,
-                escape_xml_special_chars(conn_params.host().as_ref().unwrap()),
-                conn_params.port().unwrap(),
-                escape_xml_special_chars(conn_params.dbname().as_ref().unwrap()),
-                escape_xml_special_chars(conn_params.user().as_ref().unwrap()),
-                escape_xml_special_chars(conn_params.password().as_ref().unwrap()),
-            ),
-            "mssql" | "sqlserver" => format!(
-                r#"
-        <property name="hibernate.dialect">org.hibernate.dialect.SQLServerDialect</property>
-        <property name="hibernate.connection.driver_class">com.microsoft.sqlserver.jdbc.SQLServerDriver</property>
-        <property name="hibernate.connection.url">jdbc:sqlserver://{}:{};databaseName={};trustServerCertificate=true</property>
-        <property name="hibernate.connection.username">{}</property>
-        <property name="hibernate.connection.password">{}</property>"#,
-                escape_xml_special_chars(conn_params.host().as_ref().unwrap()),
-                conn_params.port().unwrap(),
-                escape_xml_special_chars(conn_params.dbname().as_ref().unwrap()),
-                escape_xml_special_chars(conn_params.user().as_ref().unwrap()),
-                escape_xml_special_chars(conn_params.password().as_ref().unwrap()),
-            ),
-            _ => {
-                println!("Unknown database type: {}", conn_params.db);
-                "".to_string()
-            }
+        let (dialect, driver, conn_str) = match self.sniff_results.metadata() {
+            Some(metadata) => match metadata.dbms() {
+                Dbms::Mssql => (
+                    "org.hibernate.dialect.SQLServerDialect",
+                    "com.microsoft.sqlserver.jdbc.SQLServerDriver",
+                    format!(
+                        "jdbc:sqlserver://{}:{};databaseName={};trustServerCertificate=true",
+                        conn_params.host().as_ref().unwrap(),
+                        conn_params.port().unwrap(),
+                        conn_params.dbname().as_ref().unwrap()
+                    ),
+                ),
+                Dbms::MySQL => (
+                    "org.hibernate.dialect.MySQLDialect",
+                    "com.mysql.cj.jdbc.Driver",
+                    format!(
+                        "jdbc:mysql://{}:{}/{}",
+                        conn_params.host().as_ref().unwrap(),
+                        conn_params.port().unwrap(),
+                        conn_params.dbname().as_ref().unwrap()
+                    ),
+                ),
+            },
+            None => ("", "", "".to_string()),
         };
+
+        let properties = format!(
+            r#"
+        <property name="hibernate.dialect">{dialect}</property>
+        <property name="hibernate.connection.driver_class">{driver}</property>
+        <property name="hibernate.connection.url">{conn_str}</property>
+        <property name="hibernate.connection.username">{}</property>
+        <property name="hibernate.connection.password">{}</property>"#,
+            escape_xml_special_chars(conn_params.user().as_ref().unwrap()),
+            escape_xml_special_chars(conn_params.password().as_ref().unwrap()),
+        );
 
         format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -545,7 +546,7 @@ impl<'a> XMLGenerator<'a> {
         let java_class = Class::new(class_name.clone(), package.clone(), fields, methods);
 
         return java_class.into();
-        
+
         // TODO: Ugly function again
         fn gen_rel_fields<'a>(
             relations: Iter<'a, Relation>,

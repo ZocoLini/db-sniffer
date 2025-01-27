@@ -79,6 +79,9 @@ trait DatabaseSniffer {
     fn query(&mut self, query: &str) -> Pin<Box<dyn Future<Output = Vec<RowGetter>> + Send + '_>>;
 
     // Obtein specific metadata
+    fn query_metadata(&mut self) -> Pin<Box<dyn Future<Output = Option<Metadata>> + Send + '_>>;
+    
+    // Obtein specific metadata
     fn query_dbs_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>>;
     fn query_tab_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>>;
     fn query_col_names(
@@ -133,8 +136,9 @@ pub async fn sniff(conn_params: ConnectionParams) -> Result<SniffResults, crate:
     };
 
     let database = introspect_database(sniffer.as_mut()).await;
-
-    Ok(SniffResults::new(None, database, conn_params))
+    let metadata = sniffer.query_metadata().await;
+    
+    Ok(SniffResults::new(metadata, database, conn_params))
 }
 
 async fn introspect_database(sniffer: &mut (impl DatabaseSniffer + ?Sized)) -> Database {

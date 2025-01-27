@@ -1,4 +1,4 @@
-use crate::db_objects::{ColumnId, GenerationType, KeyType};
+use crate::db_objects::{ColumnId, Dbms, GenerationType, KeyType, Metadata};
 use crate::error::Error::MissingParamError;
 use crate::sniffers::{DatabaseSniffer, RowGetter};
 use crate::ConnectionParams;
@@ -90,6 +90,13 @@ impl DatabaseSniffer for MySQLSniffer {
                 .into_iter()
                 .map(RowGetter::MySQlRow)
                 .collect()
+        })
+    }
+
+    fn query_metadata(&mut self) -> Pin<Box<dyn Future<Output = Option<Metadata>> + Send + '_>> {
+        Box::pin(async move {
+            let dbms = Metadata::new(Dbms::MySQL);
+            Some(dbms)
         })
     }
 

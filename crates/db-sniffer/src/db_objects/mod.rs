@@ -220,6 +220,19 @@ impl Database {
     }
 }
 
-pub struct Schema {}
+#[derive(Getters)]
+pub struct Metadata {
+    #[getset(get = "pub", set = "pub")]
+    dbms: Dbms,
+}
 
-pub struct Metadata {}
+impl Metadata {
+    pub fn new(dbms: Dbms) -> Self {
+        Metadata { dbms }
+    }
+}
+
+pub enum Dbms {
+    MySQL,
+    Mssql,
+}

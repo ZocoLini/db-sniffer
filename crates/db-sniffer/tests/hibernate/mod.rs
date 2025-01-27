@@ -2,6 +2,7 @@ use std::fmt::format;
 use std::fs;
 use std::process::Output;
 use db_sniffer::generators;
+use db_sniffer::generators::hibernate::XMLGenerator;
 use crate::{containers, hibernate, logs, maven, test_dir};
 use crate::containers::DBContainer;
 use crate::logs::LogLevel;
@@ -92,7 +93,7 @@ pub async fn start_hibernate_test(conn_str: &str, db_dependency: maven::Dependen
         let elapsed = time.elapsed();
         logs::log(&format!("Introspection took {:?}", elapsed), LogLevel::Info);
         
-        let generator = generators::hibernate::XMLGenerator::new(&sniff_results, &target_path)
+        let generator = XMLGenerator::new(&sniff_results, &target_path)
             .ok_or("Failed to create XMLGenerator")?;
 
         let time = std::time::Instant::now();

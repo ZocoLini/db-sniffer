@@ -1,4 +1,4 @@
-use crate::db_objects::{ColumnId, GenerationType, KeyType};
+use crate::db_objects::{ColumnId, Dbms, GenerationType, KeyType, Metadata};
 use crate::sniffers::{DatabaseSniffer, RowGetter};
 use crate::ConnectionParams;
 use sqlx::Row;
@@ -116,6 +116,14 @@ impl DatabaseSniffer for MSSQLSniffer {
                 .into_iter()
                 .map(RowGetter::MSSQLRow)
                 .collect()
+        })
+    }
+
+    fn query_metadata(&mut self) -> Pin<Box<dyn Future<Output = Option<Metadata>> + Send + '_>> {
+        Box::pin(async move {
+            Some(
+                Metadata::new(Dbms::Mssql)
+            )
         })
     }
 
