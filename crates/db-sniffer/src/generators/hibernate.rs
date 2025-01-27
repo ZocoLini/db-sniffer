@@ -200,7 +200,7 @@ impl<'a> XMLGenerator<'a> {
     fn generate_table_xml(&self, table: &Table) -> String {
         let package = &self.package;
 
-        let mut ref_tables: HashMap<String, i32> = HashMap::new();
+        let mut used_names: HashMap<String, i32> = HashMap::new();
 
         let xml = format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -225,13 +225,13 @@ impl<'a> XMLGenerator<'a> {
                 table,
                 package,
                 self.sniff_results.database(),
-                &mut ref_tables
+                &mut used_names
             ),
             generate_referenced_by_xml(
                 table,
                 package,
                 self.sniff_results.database(),
-                &mut ref_tables
+                &mut used_names
             )
         );
 
@@ -354,7 +354,7 @@ impl<'a> XMLGenerator<'a> {
             table: &Table,
             package: &str,
             database: &Database,
-            ref_tables: &mut HashMap<String, i32>,
+            used_names: &mut HashMap<String, i32>,
         ) -> String {
             let mut result = "\n    <!-- References -->".to_string();
 
@@ -365,11 +365,11 @@ impl<'a> XMLGenerator<'a> {
                     .key()
                 {
                     result.push_str(&generate_relation_xml(
-                        r, package, database, true, false, false, ref_tables,
+                        r, package, database, true, false, false, used_names,
                     ));
                 } else {
                     result.push_str(&generate_relation_xml(
-                        r, package, database, true, true, true, ref_tables,
+                        r, package, database, true, true, true, used_names,
                     ));
                 };
             });
@@ -403,7 +403,7 @@ impl<'a> XMLGenerator<'a> {
             rel_owner: bool,
             insert: bool,
             update: bool,
-            ref_tables: &mut HashMap<String, i32>,
+            used_names: &mut HashMap<String, i32>,
         ) -> String {
             let cols: Vec<&Column> = relation
                 .from()
@@ -417,11 +417,11 @@ impl<'a> XMLGenerator<'a> {
                 relation.from()[0].table()
             };
 
-            let ref_table_name_count = if let Some(count) = ref_tables.get_mut(ref_table_name) {
+            let ref_table_name_count = if let Some(count) = used_names.get_mut(ref_table_name) {
                 *count += 1;
                 format!("{}{}", ref_table_name, count)
             } else {
-                ref_tables.insert(ref_table_name.to_string(), 1);
+                used_names.insert(ref_table_name.to_string(), 1);
                 ref_table_name.to_string()
             };
 
