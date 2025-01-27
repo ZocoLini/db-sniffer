@@ -71,6 +71,14 @@ impl MySQLSniffer {
 // }
 
 impl DatabaseSniffer for MySQLSniffer {
+    fn close_conn(self) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        Box::pin(async move { 
+            if let Err(e) = self.conn.close().await {
+                eprintln!("Error closing connection: {}", e);
+            }
+        })
+    }
+
     fn query(&mut self, query: &str) -> Pin<Box<dyn Future<Output = Vec<RowGetter>> + Send + '_>> {
         let query = query.to_string();
 

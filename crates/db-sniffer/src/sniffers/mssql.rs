@@ -94,6 +94,14 @@ impl MSSQLSniffer {
 // }
 
 impl DatabaseSniffer for MSSQLSniffer {
+    fn close_conn(mut self) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        Box::pin(async move{
+            if let Err(e) = self.client.close().await {
+                println!("Error closing db connection: {}", e)
+            }
+        })
+    }
+
     fn query(&mut self, query: &str) -> Pin<Box<dyn Future<Output = Vec<RowGetter>> + Send + '_>> {
         let query = query.to_string();
 

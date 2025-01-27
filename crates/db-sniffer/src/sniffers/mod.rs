@@ -72,6 +72,9 @@ impl RowGetter {
 }
 
 trait DatabaseSniffer {
+    // Close db connection
+    fn close_conn(self) -> Pin<Box<dyn Future<Output = ()> + Send>>;
+    
     // Query the db
     fn query(&mut self, query: &str) -> Pin<Box<dyn Future<Output = Vec<RowGetter>> + Send + '_>>;
 
@@ -135,7 +138,7 @@ pub async fn sniff(conn_params: ConnectionParams) -> Result<SniffResults, crate:
 }
 
 async fn introspect_database(sniffer: &mut (impl DatabaseSniffer + ?Sized)) -> Database {
-    let mut database = Database::new(sniffer.query_dbs_names().await.get(0).unwrap());
+    let mut database = Database::new(sniffer.query_dbs_names().await.first().unwrap());
 
     for table in sniffer.query_tab_names().await {
         database.add_table(introspect_table(sniffer, &table).await);
@@ -183,12 +186,12 @@ async fn introspect_column(
     column_name: &str,
     table_name: &str,
 ) -> Column {
-    let column_type = sniffer.query_col_type(table_name, &column_name).await;
+    let column_type = sniffer.query_col_type(table_name, column_name).await;
     let nullable = sniffer
-        .query_is_col_nullable(table_name, &column_name)
+        .query_is_col_nullable(table_name, column_name)
         .await;
-    let _ = sniffer.query_col_default(table_name, &column_name).await;
-    let key = sniffer.query_col_key(table_name, &column_name).await;
+    let _ = sniffer.query_col_default(table_name, column_name).await;
+    let key = sniffer.query_col_key(table_name, column_name).await;
 
     Column::new(
         ColumnId::new(table_name, column_name),
@@ -239,12 +242,10 @@ async fn introspect_rel(
 
         if is_one_to_one {
             RelationType::OneToOne
+        } else if rel_owner {
+            RelationType::ManyToOne
         } else {
-            if rel_owner {
-                RelationType::ManyToOne
-            } else {
-                RelationType::OneToMany
-            }
+            RelationType::OneToMany
         }
     };
     

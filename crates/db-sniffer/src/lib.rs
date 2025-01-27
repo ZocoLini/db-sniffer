@@ -144,7 +144,7 @@ mod tests {
             assert_eq!(conn_params.user.clone().unwrap(), "user");
             assert_eq!(conn_params.password.clone().unwrap(), "password");
             assert_eq!(conn_params.host.clone().unwrap(), "localhost");
-            assert_eq!(conn_params.port.clone().unwrap(), 3306);
+            assert_eq!(conn_params.port.unwrap(), 3306);
         }
     }
 
