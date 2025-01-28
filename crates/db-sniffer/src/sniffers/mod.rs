@@ -117,10 +117,6 @@ trait DatabaseSniffer {
         &mut self,
         table_name: &str,
     ) -> Pin<Box<dyn Future<Output = Vec<(Vec<ColumnId>, Vec<ColumnId>)>> + Send + '_>>;
-    fn query_table_referenced_by(
-        &mut self,
-        table_name: &str,
-    ) -> Pin<Box<dyn Future<Output = Vec<(Vec<ColumnId>, Vec<ColumnId>)>> + Send + '_>>;
 }
 
 pub async fn sniff(conn_params: ConnectionParams) -> Result<SniffResults, crate::Error> {
@@ -170,16 +166,6 @@ async fn introspect_table(
 
         let rel = introspect_rel(sniffer, from, to, true).await;
         table.add_reference_to(rel);
-    }
-
-    for (from, to) in sniffer.query_table_referenced_by(table_name).await {
-        // All the columns in the 'to' of the relations should be in the actual table
-        for x in to.iter() {
-            assert_eq!(x.table(), table_name);
-        }
-
-        let rel = introspect_rel(sniffer, from, to, false).await;
-        table.add_referenced_by(rel);
     }
 
     table

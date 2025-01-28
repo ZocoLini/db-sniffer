@@ -387,7 +387,7 @@ impl<'a> XMLGenerator<'a> {
         ) -> String {
             let mut result = "\n    <!-- Referenced by -->".to_string();
 
-            table.referenced_by().iter().for_each(|r| {
+            database.table_referenced_by(table.name()).iter().for_each(|r| {
                 result.push_str(&generate_relation_xml(
                     r, package, database, false, true, true, ref_tables,
                 ));
@@ -412,10 +412,10 @@ impl<'a> XMLGenerator<'a> {
                 .map(|c| database.column(c).unwrap())
                 .collect();
 
-            let ref_table_name = if rel_owner {
-                relation.to()[0].table()
+            let (ref_table_name, rel_type) = if rel_owner {
+                (relation.to()[0].table(), relation.r#type())
             } else {
-                relation.from()[0].table()
+                (relation.from()[0].table(), &invert_rel_type(relation.r#type()))
             };
 
             let ref_table_name_count = if let Some(count) = used_names.get_mut(ref_table_name) {
@@ -426,7 +426,7 @@ impl<'a> XMLGenerator<'a> {
                 ref_table_name.to_string()
             };
 
-            match relation.r#type() {
+            match rel_type {
                 RelationType::OneToOne => {
                     // TODO: Maybe the OneToOne should implement the multicolumn reference.
                     format!(
@@ -529,13 +529,13 @@ impl<'a> XMLGenerator<'a> {
         let mut used_names: HashMap<&String, i32> = HashMap::new();
 
         gen_rel_fields(
-            table.references().iter(),
+            table.references().iter().collect::<Vec<&Relation>>().iter(),
             true,
             &mut fields,
             &mut used_names,
         );
         gen_rel_fields(
-            table.referenced_by().iter(),
+            self.sniff_results.database().table_referenced_by(table.name()).iter(),
             false,
             &mut fields,
             &mut used_names,
@@ -549,7 +549,7 @@ impl<'a> XMLGenerator<'a> {
 
         // TODO: Ugly function again
         fn gen_rel_fields<'a>(
-            relations: Iter<'a, Relation>,
+            relations: Iter<&'a Relation>,
             rel_owner: bool,
             fields: &mut Vec<Field>,
             used_name: &mut HashMap<&'a String, i32>,
@@ -572,7 +572,7 @@ impl<'a> XMLGenerator<'a> {
                 let field_type =
                     Type::new(naming::to_upper_camel_case(ref_table_name), "".to_string());
 
-                let field = gen_rel_field(r.r#type(), field_name, field_type);
+                let field = gen_rel_field(r.r#type(), rel_owner, field_name, field_type);
 
                 fields.push(field);
             });
@@ -682,7 +682,14 @@ fn generate_field(column: &Column) -> Field {
     Field::new(field_name, field_type, Some(Visibility::Private), None)
 }
 
-fn gen_rel_field(rel_type: &RelationType, field_name: String, field_type: Type) -> Field {
+fn gen_rel_field(rel_type: &RelationType, rel_owner: bool, field_name: String, field_type: Type) -> Field {
+    
+    let rel_type = if rel_owner {
+        rel_type
+    } else {
+        &invert_rel_type(rel_type)
+    };
+    
     match rel_type {
         RelationType::OneToMany | RelationType::ManyToMany => {
             let mut rel_type = Type::new("Set".to_string(), "java.util".to_string());
@@ -698,6 +705,15 @@ fn gen_rel_field(rel_type: &RelationType, field_name: String, field_type: Type) 
         RelationType::OneToOne | RelationType::ManyToOne => {
             Field::new(field_name, field_type, Some(Visibility::Private), None)
         }
+    }
+}
+
+fn invert_rel_type(rel_type: &RelationType) -> RelationType {
+    match rel_type {
+        RelationType::OneToOne => RelationType::OneToOne,
+        RelationType::OneToMany => RelationType::ManyToOne,
+        RelationType::ManyToOne => RelationType::OneToMany,
+        RelationType::ManyToMany => RelationType::ManyToMany,
     }
 }
 

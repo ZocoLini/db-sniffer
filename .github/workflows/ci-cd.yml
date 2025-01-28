@@ -28,10 +28,10 @@ jobs:
       - name: Cache dependencies
         uses: Swatinem/rust-cache@v2
 
-      - name: Install Docker Compose y Maven
+      - name: Install podman y Maven
         run: |
           sudo apt-get update
-          sudo apt-get install -y docker-compose
+          sudo apt-get install -y podman
           sudo apt-get install -y maven
 
       - name: Run unit tests
