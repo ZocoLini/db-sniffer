@@ -70,3 +70,7 @@
 [INFO] - 1738014120 - Introspection took 560.84458ms
 [INFO] - 1738014120 - Starting generation
 [INFO] - 1738014120 - Generation took 11.397645ms
+[INFO] - 1738054351 - Starting introspection
+[INFO] - 1738054360 - Introspection took 9.475350706s
+[INFO] - 1738054360 - Starting generation
+[INFO] - 1738054360 - Generation took 4.661188ms

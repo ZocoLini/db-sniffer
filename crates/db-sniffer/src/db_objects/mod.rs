@@ -4,39 +4,40 @@ use std::str::FromStr;
 
 #[derive(PartialEq)]
 pub enum ColumnType {
-    Integer,
-    Text,
-    Char,
-    Varchar,
-    Float,
-    Double,
+    Integer(i32),
+    Text(i32),
+    Char(i32),
+    Varchar(i32),
+    Float(i32),
+    Double(i32),
     Date,
     Time,
     DateTime,
     Boolean,
-    Blob,
-    Decimal,
-    Numeric,
+    Blob(i32),
+    Decimal(i32, i32),
+    Numeric(i32),
 }
 
+// TODO: Add support for scale, precision, lenght properties for types
 impl FromStr for ColumnType {
     type Err = ();
     
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "int" | "integer" => Ok(ColumnType::Integer),
-            "text" => Ok(ColumnType::Text),
-            "char" => Ok(ColumnType::Char),
-            "varchar" => Ok(ColumnType::Varchar),
-            "float" => Ok(ColumnType::Float),
-            "double" => Ok(ColumnType::Double),
+            "int" | "integer" => Ok(ColumnType::Integer(0)),
+            "text" => Ok(ColumnType::Text(0)),
+            "char" => Ok(ColumnType::Char(0)),
+            "varchar" => Ok(ColumnType::Varchar(0)),
+            "float" => Ok(ColumnType::Float(0)),
+            "double" => Ok(ColumnType::Double(0)),
             "date" => Ok(ColumnType::Date),
             "time" => Ok(ColumnType::Time),
             "datetime" | "timestamp" => Ok(ColumnType::DateTime),
             "boolean" | "bool" => Ok(ColumnType::Boolean),
-            "blob" => Ok(ColumnType::Blob),
-            "decimal" => Ok(ColumnType::Decimal),
-            "numeric" => Ok(ColumnType::Numeric),
+            "blob" => Ok(ColumnType::Blob(0)),
+            "decimal" => Ok(ColumnType::Decimal(0, 0)),
+            "numeric" => Ok(ColumnType::Numeric(0)),
             _ => Err(()),
         }
     }

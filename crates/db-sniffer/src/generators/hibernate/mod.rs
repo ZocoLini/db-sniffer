@@ -1,5 +1,5 @@
 use crate::db_objects::{
-    Column, ColumnType, Database, Dbms, GenerationType, KeyType, Metadata, Relation, RelationType,
+    Column, ColumnType, Database, Dbms, GenerationType, KeyType, Relation, RelationType,
     Table,
 };
 use crate::naming;
@@ -608,33 +608,33 @@ impl<'a> XMLGenerator<'a> {
 // TODO: Decimal not working. Ask other for the correct mapping type
 fn column_type_to_hibernate_type(column_type: &ColumnType) -> String {
     match column_type {
-        ColumnType::Integer => "int".to_string(),
-        ColumnType::Text | ColumnType::Varchar => "string".to_string(),
-        ColumnType::Blob => "binary".to_string(),
+        ColumnType::Integer(_) => "int".to_string(),
+        ColumnType::Text(_) | ColumnType::Varchar(_) => "string".to_string(),
+        ColumnType::Blob(_) => "binary".to_string(),
         ColumnType::Boolean => "boolean".to_string(),
         ColumnType::Date => "date".to_string(),
         ColumnType::DateTime => "timestamp".to_string(),
         ColumnType::Time => "time".to_string(),
-        ColumnType::Double => "double".to_string(),
-        ColumnType::Float => "float".to_string(),
-        ColumnType::Char => "char".to_string(),
-        ColumnType::Decimal | ColumnType::Numeric => "big_decimal".to_string(),
+        ColumnType::Double(_) => "double".to_string(),
+        ColumnType::Float(_) => "float".to_string(),
+        ColumnType::Char(_) => "char".to_string(),
+        ColumnType::Decimal(_, _) | ColumnType::Numeric(_) => "big_decimal".to_string(),
     }
 }
 
 fn column_type_to_java_type(column_type: &ColumnType) -> Type {
     match column_type {
-        ColumnType::Integer => Type::integer(),
-        ColumnType::Text | ColumnType::Varchar => Type::string(),
-        ColumnType::Blob => Type::new("byte[]".to_string(), "".to_string()),
+        ColumnType::Integer(_) => Type::integer(),
+        ColumnType::Text(_) | ColumnType::Varchar(_) => Type::string(),
+        ColumnType::Blob(_) => Type::new("byte[]".to_string(), "".to_string()),
         ColumnType::Boolean => Type::boolean(),
         ColumnType::Date | ColumnType::DateTime | ColumnType::Time => {
             Type::new("Date".to_string(), "java.util".to_string())
         }
-        ColumnType::Double => Type::double(),
-        ColumnType::Float => Type::float(),
-        ColumnType::Char => Type::character(),
-        ColumnType::Decimal | ColumnType::Numeric => {
+        ColumnType::Double(_) => Type::double(),
+        ColumnType::Float(_) => Type::float(),
+        ColumnType::Char(_) => Type::character(),
+        ColumnType::Decimal(_, _) | ColumnType::Numeric(_) => {
             Type::new("BigDecimal".to_string(), "java.math".to_string())
         }
     }
