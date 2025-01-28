@@ -61,6 +61,16 @@ create table Person_Project (
     foreign key (project_id) references Project(id)
 );
 
+create table DecimalSupport (
+                                id int primary key auto_increment,
+                                decimal_1 decimal(5, 1),
+                                decimal_2 decimal(10, 2),
+                                decimal_3 decimal(15, 10),
+                                decimal_4 decimal(20, 15),
+                                decimal_5 decimal(30, 20),
+                                decimal_6 decimal(10, 0)
+);
+
 -- Multiple key references
 create table ComposedPKTable (
     fist_key int,

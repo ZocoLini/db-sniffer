@@ -1,10 +1,10 @@
 use crate::commands::Command;
 use crate::BIN_NAME;
-use db_sniffer::generators::hibernate;
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use std::str::FromStr;
+use db_sniffer::generators::hibernate;
 
 pub enum SniffMode {
     DDL,

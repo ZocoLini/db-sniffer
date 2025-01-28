@@ -112,6 +112,17 @@ pub enum RelationType {
     ManyToMany,
 }
 
+impl RelationType {
+    pub fn inverse(&self) -> RelationType {
+        match self {
+            RelationType::OneToOne => RelationType::OneToOne,
+            RelationType::OneToMany => RelationType::ManyToOne,
+            RelationType::ManyToOne => RelationType::OneToMany,
+            RelationType::ManyToMany => RelationType::ManyToMany,
+        }
+    }
+}
+
 #[derive(Getters)]
 pub struct Relation {
     #[get = "pub"]
