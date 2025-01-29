@@ -8,13 +8,13 @@ use tiberius::{AuthMethod, Client, Config};
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-pub(super) struct MSSQLSniffer {
-    conn_params: ConnectionParams,
+pub(super) struct MSSQLSniffer<'a> {
+    conn_params: &'a ConnectionParams,
     client: Client<Compat<TcpStream>>,
 }
 
-impl MSSQLSniffer {
-    pub async fn new(params: ConnectionParams) -> Result<Self, crate::Error> {
+impl<'a> MSSQLSniffer<'a> {
+    pub async fn new(params: &'a ConnectionParams) -> Result<Self, crate::Error> {
         let user = params
             .user
             .as_ref()
@@ -93,7 +93,7 @@ impl MSSQLSniffer {
 //     }
 // }
 
-impl Sniffer for MSSQLSniffer {
+impl Sniffer for MSSQLSniffer<'_> {
     fn close_conn(mut self) -> Pin<Box<dyn Future<Output = ()> + Send>> {
         Box::pin(async move{
             if let Err(e) = self.client.close().await {

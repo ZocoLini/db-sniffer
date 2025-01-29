@@ -5,13 +5,13 @@ use crate::ConnectionParams;
 use sqlx::{Connection, Executor, MySqlConnection, Row};
 use std::future::Future;
 use std::pin::Pin;
-pub(super) struct MySQLSniffer {
-    conn_params: ConnectionParams,
+pub(super) struct MySQLSniffer<'a> {
+    conn_params: &'a ConnectionParams,
     conn: MySqlConnection,
 }
 
-impl MySQLSniffer {
-    pub async fn new(params: ConnectionParams) -> Result<Self, crate::Error> {
+impl<'a> MySQLSniffer<'a> {
+    pub async fn new(params: &'a ConnectionParams) -> Result<Self, crate::Error> {
         let user = params
             .user
             .as_ref()
@@ -70,7 +70,7 @@ impl MySQLSniffer {
 //     }
 // }
 
-impl Sniffer for MySQLSniffer {
+impl<'a> Sniffer for MySQLSniffer<'a> {
     fn close_conn(self) -> Pin<Box<dyn Future<Output = ()> + Send>> {
         Box::pin(async move { 
             if let Err(e) = self.conn.close().await {

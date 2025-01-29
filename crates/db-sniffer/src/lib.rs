@@ -1,6 +1,5 @@
 extern crate core;
 
-use crate::sniffers::{SniffResults};
 use getset::Getters;
 use std::str::FromStr;
 
@@ -15,12 +14,7 @@ mod error;
 mod naming;
 
 pub use error::Error;
-
-/// conn_str: db://user:password@host:port/[dbname]
-pub async fn sniff(conn_str: &str) -> Result<SniffResults, Error> {
-    let conn_params = conn_str.parse::<ConnectionParams>()?;
-    sniffers::sniff(conn_params).await
-}
+pub use sniffers::sniff;
 
 #[derive(Clone, Getters)]
 pub struct ConnectionParams {

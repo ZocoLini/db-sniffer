@@ -9,7 +9,6 @@ use getset::Getters;
 use sqlx::{Decode, MySql, Row, Type};
 use std::future::Future;
 use std::pin::Pin;
-use std::process::Output;
 use std::str::FromStr;
 use tiberius::FromSql;
 
@@ -141,13 +140,10 @@ impl FromStr for SnifferType {
 }
 
 impl SnifferType {
-    async fn into_sniffer(
+    async fn into_sniffer<'a>(
         self,
-        conn_params: &ConnectionParams,
-    ) -> Result<Box<dyn Sniffer>, crate::Error> {
-        // TODO: Remove the clone in the connection params
-        let conn_params = conn_params.clone();
-
+        conn_params: &'a ConnectionParams,
+    ) -> Result<Box<dyn Sniffer + 'a>, crate::Error> {
         match self {
             SnifferType::MySQL => Ok(Box::new(mysql::MySQLSniffer::new(conn_params).await?)),
             SnifferType::MsSQL => Ok(Box::new(mssql::MSSQLSniffer::new(conn_params).await?)),
@@ -155,7 +151,10 @@ impl SnifferType {
     }
 }
 
-pub async fn sniff(conn_params: ConnectionParams) -> Result<SniffResults, crate::Error> {
+/// conn_str: db://user:password@host:port/[dbname]
+pub async fn sniff(conn_str: &str) -> Result<SniffResults, crate::Error> {
+    let conn_params = conn_str.parse::<ConnectionParams>()?;
+    
     let mut sniffer = SnifferType::from_str(&conn_params.db)?
         .into_sniffer(&conn_params)
         .await?;
@@ -163,6 +162,8 @@ pub async fn sniff(conn_params: ConnectionParams) -> Result<SniffResults, crate:
     let database = introspect_database(sniffer.as_mut()).await;
     let metadata = sniffer.query_metadata().await;
 
+    drop(sniffer);
+    
     Ok(SniffResults::new(metadata, database, conn_params))
 }
 
