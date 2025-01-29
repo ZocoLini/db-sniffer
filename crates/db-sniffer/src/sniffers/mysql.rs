@@ -1,6 +1,6 @@
 use crate::db_objects::{ColumnId, Dbms, GenerationType, KeyType, Metadata};
 use crate::error::Error::MissingParamError;
-use crate::sniffers::{DatabaseSniffer, RowGetter};
+use crate::sniffers::{Sniffer, RowGetter};
 use crate::ConnectionParams;
 use sqlx::{Connection, Executor, MySqlConnection, Row};
 use std::future::Future;
@@ -70,7 +70,7 @@ impl MySQLSniffer {
 //     }
 // }
 
-impl DatabaseSniffer for MySQLSniffer {
+impl Sniffer for MySQLSniffer {
     fn close_conn(self) -> Pin<Box<dyn Future<Output = ()> + Send>> {
         Box::pin(async move { 
             if let Err(e) = self.conn.close().await {

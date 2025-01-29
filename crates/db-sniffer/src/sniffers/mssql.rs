@@ -1,5 +1,5 @@
 use crate::db_objects::{ColumnId, Dbms, GenerationType, KeyType, Metadata};
-use crate::sniffers::{DatabaseSniffer, RowGetter};
+use crate::sniffers::{Sniffer, RowGetter};
 use crate::ConnectionParams;
 use sqlx::Row;
 use std::future::Future;
@@ -93,7 +93,7 @@ impl MSSQLSniffer {
 //     }
 // }
 
-impl DatabaseSniffer for MSSQLSniffer {
+impl Sniffer for MSSQLSniffer {
     fn close_conn(mut self) -> Pin<Box<dyn Future<Output = ()> + Send>> {
         Box::pin(async move{
             if let Err(e) = self.client.close().await {
