@@ -3,14 +3,12 @@ mod jpa;
 
 use crate::db_objects::{
     Column, ColumnType, RelationType
-    ,
 };
 use crate::naming;
-use dotjava::{Field, Type, Visibility};
 use std::cmp::PartialEq;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
-
+use dotjava::{Field, Type, Visibility};
 pub use jpa::JPAGenerator;
 pub use xml::XMLGenerator;
 

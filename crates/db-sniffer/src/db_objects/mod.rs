@@ -92,7 +92,7 @@ impl Table {
     pub fn add_reference_to(&mut self, relation: Relation) {
         self.references.push(relation);
     }
-    
+
     pub fn ids(&self) -> Vec<&Column> {
         self.columns
             .iter()
@@ -234,6 +234,16 @@ impl Database {
                     })
                     .collect::<Vec<&Relation>>()
             })
+            .collect()
+    }
+
+    pub fn table_references_to(&self, table_name: &str) -> Vec<&Relation> {
+        self.tables
+            .iter()
+            .find(|t| t.name == table_name)
+            .expect("Table not found. Should not happen")
+            .references()
+            .iter()
             .collect()
     }
 }

@@ -154,7 +154,7 @@ impl SnifferType {
 /// conn_str: db://user:password@host:port/[dbname]
 pub async fn sniff(conn_str: &str) -> Result<SniffResults, crate::Error> {
     let conn_params = conn_str.parse::<ConnectionParams>()?;
-    
+
     let mut sniffer = SnifferType::from_str(&conn_params.db)?
         .into_sniffer(&conn_params)
         .await?;
@@ -163,7 +163,7 @@ pub async fn sniff(conn_str: &str) -> Result<SniffResults, crate::Error> {
     let metadata = sniffer.query_metadata().await;
 
     drop(sniffer);
-    
+
     Ok(SniffResults::new(metadata, database, conn_params))
 }
 

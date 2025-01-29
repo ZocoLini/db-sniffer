@@ -4,10 +4,10 @@ use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
 use std::str::FromStr;
-use db_sniffer::generators::hibernate;
+use db_sniffer::generators;
 
 pub enum SniffMode {
-    DDL,
+    Ddl,
     HibernateXML,
     HibernateJPA,
 }
@@ -17,7 +17,7 @@ impl FromStr for SniffMode {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "0" => Ok(SniffMode::DDL),
+            "0" => Ok(SniffMode::Ddl),
             "1" => Ok(SniffMode::HibernateXML),
             "2" => Ok(SniffMode::HibernateJPA),
             _ => Err(()),
@@ -71,8 +71,8 @@ impl Command for Sniff {
         };
 
         let generator = match mode {
-            SniffMode::HibernateXML => hibernate::XMLGenerator::new(&results, &output).unwrap(),
-            SniffMode::DDL => panic!("Not implemented mode"),
+            SniffMode::HibernateXML => generators::XMLGenerator::new(&results, &output).unwrap(),
+            SniffMode::Ddl => panic!("Not implemented mode"),
             SniffMode::HibernateJPA => panic!("Not implemented mode"),
         };
 

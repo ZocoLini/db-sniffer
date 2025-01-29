@@ -2,7 +2,7 @@ use std::fmt::format;
 use std::fs;
 use std::process::Output;
 use db_sniffer::generators;
-use db_sniffer::generators::hibernate::XMLGenerator;
+use db_sniffer::generators::XMLGenerator;
 use crate::{containers, hibernate, logs, maven, test_dir};
 use crate::containers::DBContainer;
 use crate::logs::LogLevel;

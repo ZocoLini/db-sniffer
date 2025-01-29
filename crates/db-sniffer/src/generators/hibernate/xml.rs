@@ -163,7 +163,6 @@ impl<'a> XMLGenerator<'a> {
 
             fs::File::create(&table_file_path).unwrap();
             fs::write(table_file_path, table_xml).unwrap();
-            //
 
             let table_java = self.generate_table_java(table);
             let table_java_file_path = self.target_path.join(format!(
@@ -203,7 +202,6 @@ impl<'a> XMLGenerator<'a> {
 {}
 {}
 {}
-{}
   </class>
 </hibernate-mapping>
         "#,
@@ -212,12 +210,6 @@ impl<'a> XMLGenerator<'a> {
             generate_id_xml(table, package),
             generate_properties_xml(table),
             generate_references_to_xml(
-                table,
-                package,
-                self.sniff_results.database(),
-                &mut used_names
-            ),
-            generate_referenced_by_xml(
                 table,
                 package,
                 self.sniff_results.database(),
@@ -338,7 +330,6 @@ impl<'a> XMLGenerator<'a> {
             result
         }
 
-        // TODO: This function and the bottom one are really similar. Maybe they can be merged
         // TODO: This many parameters makes this function ugly af
         fn generate_references_to_xml(
             table: &Table,
@@ -364,21 +355,11 @@ impl<'a> XMLGenerator<'a> {
                 };
             });
 
-            result
-        }
-
-        // TODO: This many parameters makes this function ugly af
-        fn generate_referenced_by_xml(
-            table: &Table,
-            package: &str,
-            database: &Database,
-            ref_tables: &mut HashMap<String, i32>,
-        ) -> String {
-            let mut result = "\n    <!-- Referenced by -->".to_string();
+            result.push_str("\n    <!-- Referenced by -->");
 
             database.table_referenced_by(table.name()).iter().for_each(|r| {
                 result.push_str(&generate_relation_xml(
-                    r, package, database, false, true, true, ref_tables,
+                    r, package, database, false, true, true, used_names,
                 ));
             });
 
