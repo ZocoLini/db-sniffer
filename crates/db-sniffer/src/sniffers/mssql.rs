@@ -1,9 +1,9 @@
-use crate::db_objects::{ColumnExactitude, ColumnId, Dbms, GenerationType, KeyType, Metadata};
-use crate::sniffers::{RowGetter, Sniffer};
-use crate::ConnectionParams;
+use crate::db_objects::{ColumnId, ColumnType, Dbms, GenerationType, KeyType, Metadata};
+use crate::sniffers::{ConnectionParams, RowGetter, Sniffer};
 use sqlx::Row;
 use std::future::Future;
 use std::pin::Pin;
+use std::str::FromStr;
 use tiberius::{AuthMethod, Client, Config};
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt, TokioAsyncWriteCompatExt};
@@ -164,59 +164,34 @@ impl Sniffer for MSSQLSniffer<'_> {
         })
     }
 
-    fn query_col_exac(
-        &mut self,
-        table_name: &str,
-        column_name: &str,
-    ) -> Pin<Box<dyn Future<Output = ColumnExactitude> + Send + '_>> {
-        let column_name = column_name.to_string();
-        let table_name = table_name.to_string();
-
-        Box::pin(async move {
-            let rows = self.query(&format!(
-                "SELECT CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_PRECISION_RADIX, NUMERIC_SCALE
-            FROM 
-                INFORMATION_SCHEMA.COLUMNS
-            WHERE 
-                TABLE_NAME = '{table_name}' AND COLUMN_NAME = '{column_name}';"
-            )).await;
-            
-            let row = rows.first().expect("Column not found");
-
-            let length = row.opt_get::<i32>(0);
-            let precision = row.opt_get::<i32>(1);
-            let radix = row.opt_get::<i32>(2);
-            let scale = row.opt_get::<i32>(3);
-
-            ColumnExactitude::new(
-                length,
-                precision,
-                radix,
-                scale,
-            )
-        })
-    }
-
     fn query_col_type(
         &mut self,
         table_name: &str,
         column_name: &str,
-    ) -> Pin<Box<dyn Future<Output = String> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = ColumnType> + Send + '_>> {
         let table_name = table_name.to_string();
         let column_name = column_name.to_string();
 
         Box::pin(async move {
-            self.query(&format!(
-                "SELECT DATA_TYPE
-            FROM 
-                INFORMATION_SCHEMA.COLUMNS
-            WHERE 
+            let col_type = self.query(&format!(
+                "SELECT
+                    CASE
+                        WHEN CHARACTER_MAXIMUM_LENGTH IS NOT NULL THEN CONCAT(DATA_TYPE, '(', CHARACTER_MAXIMUM_LENGTH, ')')
+                        WHEN NUMERIC_PRECISION IS NOT NULL AND NUMERIC_SCALE IS NOT NULL THEN CONCAT(DATA_TYPE, '(', NUMERIC_PRECISION, ', ', NUMERIC_SCALE, ')')
+                        WHEN NUMERIC_PRECISION IS NOT NULL AND NUMERIC_SCALE IS NULL THEN CONCAT(DATA_TYPE, '(', NUMERIC_PRECISION, ')')
+                        ELSE DATA_TYPE
+                    END
+                FROM
+                    INFORMATION_SCHEMA.COLUMNS
+                WHERE
                 TABLE_NAME = '{table_name}' AND COLUMN_NAME = '{column_name}'"
             ))
             .await
             .iter()
             .map(|row| row.get::<&str>(0).to_string())
-            .collect()
+            .collect::<String>();
+
+            ColumnType::from_str(&col_type).unwrap_or_else(|_| panic!("Error parsing column type: {col_type}"))
         })
     }
 

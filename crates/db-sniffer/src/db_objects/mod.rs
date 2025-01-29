@@ -1,8 +1,7 @@
-use getset::{Getters, Setters};
-use std::cmp::PartialEq;
+use getset::Getters;
 use std::str::FromStr;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum ColumnType {
     Integer(i32),
     Text(i32),
@@ -19,12 +18,38 @@ pub enum ColumnType {
     Numeric(i32),
 }
 
-// TODO: Add support for scale, precision, lenght properties for types
 impl FromStr for ColumnType {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+        let regex = regex::Regex::new(r"(?P<type_name>[a-z]+)(\((?P<values>[\d,]+)\))?$")
+            .expect("invalid regex");
+
+        let Some((type_name, values)) = regex.captures(s).map(|captures| {
+            let type_name = captures
+                .name("type_name")
+                .expect("type_name not found")
+                .as_str();
+            let values = captures
+                .name("values")
+                .map(|v| {
+                    v.as_str()
+                        .replace(" ", "")
+                        .split(',')
+                        .map(|s| {
+                            s.parse::<i32>()
+                                .expect("Has to be a number as the regex says")
+                        })
+                        .collect::<Vec<i32>>()
+                })
+                .unwrap_or_default();
+
+            (type_name, values)
+        }) else {
+            return Err(());
+        };
+
+        match type_name {
             "int" | "integer" => Ok(ColumnType::Integer(0)),
             "text" => Ok(ColumnType::Text(0)),
             "char" => Ok(ColumnType::Char(0)),
@@ -36,7 +61,10 @@ impl FromStr for ColumnType {
             "datetime" | "timestamp" => Ok(ColumnType::DateTime),
             "boolean" | "bool" => Ok(ColumnType::Boolean),
             "blob" => Ok(ColumnType::Blob(0)),
-            "decimal" => Ok(ColumnType::Decimal(0, 0)),
+            "decimal" => Ok(ColumnType::Decimal(
+                *values.first().unwrap_or(&0),
+                *values.get(1).unwrap_or(&0),
+            )),
             "numeric" => Ok(ColumnType::Numeric(0)),
             _ => Err(()),
         }
@@ -168,7 +196,7 @@ pub struct Column {
     #[get = "pub"]
     nullable: bool,
     #[get = "pub"]
-    key: KeyType
+    key: KeyType,
 }
 
 impl Column {
@@ -178,10 +206,9 @@ impl Column {
             r#type,
             nullable,
             key,
-            column_exactitude: ColumnExactitude::default(),
         }
     }
-    
+
     pub fn not_nullable(&self) -> bool {
         !self.nullable
     }
@@ -263,4 +290,42 @@ impl Metadata {
 pub enum Dbms {
     MySQL,
     Mssql,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_column_type_from_str() {
+        assert_eq!("int".parse::<ColumnType>(), Ok(ColumnType::Integer(0)));
+        assert_eq!("integer".parse::<ColumnType>(), Ok(ColumnType::Integer(0)));
+        assert_eq!("text".parse::<ColumnType>(), Ok(ColumnType::Text(0)));
+        assert_eq!("char".parse::<ColumnType>(), Ok(ColumnType::Char(0)));
+        assert_eq!("varchar".parse::<ColumnType>(), Ok(ColumnType::Varchar(0)));
+        assert_eq!("float".parse::<ColumnType>(), Ok(ColumnType::Float(0)));
+        assert_eq!("double".parse::<ColumnType>(), Ok(ColumnType::Double(0)));
+        assert_eq!("date".parse::<ColumnType>(), Ok(ColumnType::Date));
+        assert_eq!("time".parse::<ColumnType>(), Ok(ColumnType::Time));
+        assert_eq!("datetime".parse::<ColumnType>(), Ok(ColumnType::DateTime));
+        assert_eq!("timestamp".parse::<ColumnType>(), Ok(ColumnType::DateTime));
+        assert_eq!("boolean".parse::<ColumnType>(), Ok(ColumnType::Boolean));
+        assert_eq!("bool".parse::<ColumnType>(), Ok(ColumnType::Boolean));
+        assert_eq!("blob".parse::<ColumnType>(), Ok(ColumnType::Blob(0)));
+        assert_eq!(
+            "decimal".parse::<ColumnType>(),
+            Ok(ColumnType::Decimal(0, 0))
+        );
+        assert_eq!("numeric".parse::<ColumnType>(), Ok(ColumnType::Numeric(0)));
+        assert_eq!("invalid".parse::<ColumnType>(), Err(()));
+
+        assert_eq!(
+            "decimal(10)".parse::<ColumnType>(),
+            Ok(ColumnType::Decimal(10, 0))
+        );
+        assert_eq!(
+            "decimal(10, 2)".parse::<ColumnType>(),
+            Ok(ColumnType::Decimal(10, 2))
+        );
+    }
 }

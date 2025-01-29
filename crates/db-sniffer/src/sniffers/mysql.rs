@@ -1,10 +1,13 @@
-use crate::db_objects::{ColumnExactitude, ColumnId, Dbms, GenerationType, KeyType, Metadata};
+use crate::db_objects::{
+    ColumnId, ColumnType, Dbms, GenerationType, KeyType, Metadata,
+};
 use crate::error::Error::MissingParamError;
-use crate::sniffers::{RowGetter, Sniffer};
-use crate::ConnectionParams;
+use crate::sniffers::{ConnectionParams, RowGetter, Sniffer};
 use sqlx::{Connection, Executor, MySqlConnection, Row};
 use std::future::Future;
 use std::pin::Pin;
+use std::str::FromStr;
+
 pub(super) struct MySQLSniffer<'a> {
     conn_params: &'a ConnectionParams,
     conn: MySqlConnection,
@@ -70,9 +73,9 @@ impl<'a> MySQLSniffer<'a> {
 //     }
 // }
 
-impl<'a> Sniffer for MySQLSniffer<'a> {
+impl Sniffer for MySQLSniffer<'_> {
     fn close_conn(self) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-        Box::pin(async move { 
+        Box::pin(async move {
             if let Err(e) = self.conn.close().await {
                 eprintln!("Error closing connection: {}", e);
             }
@@ -137,36 +140,28 @@ impl<'a> Sniffer for MySQLSniffer<'a> {
         })
     }
 
-    fn query_col_exac(&mut self, table_name: &str, column_name: &str) -> Pin<Box<dyn Future<Output = ColumnExactitude> + Send + '_>> {
-        todo!()
-    }
-
     fn query_col_type(
         &mut self,
         table_name: &str,
         column_name: &str,
-    ) -> Pin<Box<dyn Future<Output = String> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = ColumnType> + Send + '_>> {
         let table_name = table_name.to_string();
         let column_name = column_name.to_string();
 
         Box::pin(async move {
-            self.query(format!("describe {}", table_name).as_str())
+            let col_type = self.query(format!("describe {}", table_name).as_str())
                 .await
                 .iter()
                 .filter_map(|row| {
                     if row.get::<&str>(0) == column_name {
-                        Some(
-                            String::from_utf8_lossy(row.get::<&[u8]>(1))
-                                .split("(")
-                                .next()
-                                .unwrap()
-                                .to_string(),
-                        )
+                        Some(String::from_utf8_lossy(row.get::<&[u8]>(1)))
                     } else {
                         None
                     }
                 })
-                .collect()
+                .collect::<String>();
+            
+            ColumnType::from_str(&col_type).expect("Error parsing column type")
         })
     }
 

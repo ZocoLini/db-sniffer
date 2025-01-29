@@ -74,7 +74,8 @@ create table DecimalSupport (
     decimal_3 decimal(15, 10),
     decimal_4 decimal(20, 15),
     decimal_5 decimal(30, 20),
-    decimal_6 decimal(10, 0)
+    decimal_6 decimal(10, 0),
+    decimal_7 decimal,
 );
 go
 
