@@ -1,9 +1,7 @@
 pub(crate) mod mssql;
 pub(crate) mod mysql;
 
-use crate::db_objects::{
-    Column, ColumnId, ColumnType, Database, Metadata, Relation, RelationType, Table,
-};
+use crate::db_objects::{Column, ColumnExactitude, ColumnId, ColumnType, Database, Metadata, Relation, RelationType, Table};
 use crate::{db_objects, ConnectionParams};
 use getset::Getters;
 use sqlx::{Decode, MySql, Row, Type};
@@ -35,6 +33,15 @@ impl SniffResults {
         }
     }
 }
+
+#[derive(Default)]
+pub struct ColumnExactitude {
+    length: Option<i32>,
+    precision: Option<i32>,
+    radix: Option<i32>,
+    scale: Option<i32>,
+}
+
 /*
  * Tried to implement a generic way to get the rows from the db but failed to do so without enums
  *
@@ -91,6 +98,11 @@ trait Sniffer {
         &mut self,
         table_name: &str,
     ) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>>;
+    fn query_col_exac(
+        &mut self,
+        table_name: &str,
+        column_name: &str,
+    ) -> Pin<Box<dyn Future<Output = ColumnExactitude> + Send + '_>>;
     fn query_col_type(
         &mut self,
         table_name: &str,
@@ -210,10 +222,15 @@ async fn introspect_column(
     let nullable = sniffer.query_is_col_nullable(table_name, column_name).await;
     let _ = sniffer.query_col_default(table_name, column_name).await;
     let key = sniffer.query_col_key(table_name, column_name).await;
+    
+    let col_exactitude = sniffer.query_col_exac(table_name, column_name).await;
 
+    // TODO: Set the exactitude values
+    let colum_type = ColumnType::from_str(column_type.as_str()).unwrap();
+    
     Column::new(
         ColumnId::new(table_name, column_name),
-        ColumnType::from_str(column_type.as_str()).unwrap(),
+        colum_type,
         nullable,
         key,
     )

@@ -1,13 +1,16 @@
-use std::path::PathBuf;
-use std::fs;
-use std::collections::HashMap;
-use dotjava::{Class, Field, Interface, Type, Visibility};
-use std::slice::Iter;
-use std::ops::Add;
-use crate::db_objects::{Column, Database, Dbms, GenerationType, KeyType, Relation, RelationType, Table};
+use crate::db_objects::{
+    Column, ColumnType, Database, Dbms, GenerationType, KeyType, Relation, RelationType, Table,
+};
 use crate::generators::hibernate;
 use crate::naming;
 use crate::sniffers::SniffResults;
+use dotjava::{Class, Field, Interface, Type, Visibility};
+use std::collections::HashMap;
+use std::fs;
+use std::fs::exists;
+use std::ops::Add;
+use std::path::PathBuf;
+use std::slice::Iter;
 
 pub struct XMLGenerator<'a> {
     target_path: &'a PathBuf,
@@ -304,8 +307,8 @@ impl<'a> XMLGenerator<'a> {
         }
 
         fn generate_column_xml(column: &Column) -> String {
-            format!(
-                r#"<column name="{}"{}{}/>"#,
+            let mut column_str = format!(
+                r#"<column name="{}"{}{}"#,
                 column.name(),
                 if column.not_nullable() {
                     " not-null=\"true\""
@@ -317,7 +320,19 @@ impl<'a> XMLGenerator<'a> {
                 } else {
                     ""
                 }
-            )
+            );
+
+            if let ColumnType::Decimal(precision, scale) = column.r#type() {
+                column_str.push_str(&format!(r#" precision="{precision}""#));
+                
+                if *scale > 2 && *scale != 0 {
+                    column_str.push_str(&format!(r#" scale="{scale}""#));
+                }
+            }
+
+            column_str.push_str("/>");
+
+            column_str
         }
 
         fn generate_multi_column_xml(columns: &Vec<&Column>) -> String {
@@ -357,11 +372,14 @@ impl<'a> XMLGenerator<'a> {
 
             result.push_str("\n    <!-- Referenced by -->");
 
-            database.table_referenced_by(table.name()).iter().for_each(|r| {
-                result.push_str(&generate_relation_xml(
-                    r, package, database, false, true, true, used_names,
-                ));
-            });
+            database
+                .table_referenced_by(table.name())
+                .iter()
+                .for_each(|r| {
+                    result.push_str(&generate_relation_xml(
+                        r, package, database, false, true, true, used_names,
+                    ));
+                });
 
             result
         }
@@ -505,7 +523,10 @@ impl<'a> XMLGenerator<'a> {
             &mut used_names,
         );
         gen_rel_fields(
-            self.sniff_results.database().table_referenced_by(table.name()).iter(),
+            self.sniff_results
+                .database()
+                .table_referenced_by(table.name())
+                .iter(),
             false,
             &mut fields,
             &mut used_names,
@@ -553,7 +574,11 @@ impl<'a> XMLGenerator<'a> {
         let package = &self.package;
         let class_name = naming::to_upper_camel_case(table.name());
 
-        let fields: Vec<Field> = table.ids().iter().map(|c| hibernate::generate_field(c)).collect();
+        let fields: Vec<Field> = table
+            .ids()
+            .iter()
+            .map(|c| hibernate::generate_field(c))
+            .collect();
 
         let methods = fields.iter().flat_map(|f| f.getters_setters()).collect();
 

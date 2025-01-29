@@ -1,5 +1,5 @@
-use crate::db_objects::{ColumnId, Dbms, GenerationType, KeyType, Metadata};
-use crate::sniffers::{Sniffer, RowGetter};
+use crate::db_objects::{ColumnExactitude, ColumnId, Dbms, GenerationType, KeyType, Metadata};
+use crate::sniffers::{RowGetter, Sniffer};
 use crate::ConnectionParams;
 use sqlx::Row;
 use std::future::Future;
@@ -92,7 +92,7 @@ impl<'a> MSSQLSniffer<'a> {
 
 impl Sniffer for MSSQLSniffer<'_> {
     fn close_conn(mut self) -> Pin<Box<dyn Future<Output = ()> + Send>> {
-        Box::pin(async move{
+        Box::pin(async move {
             if let Err(e) = self.client.close().await {
                 println!("Error closing db connection: {}", e)
             }
@@ -117,11 +117,7 @@ impl Sniffer for MSSQLSniffer<'_> {
     }
 
     fn query_metadata(&mut self) -> Pin<Box<dyn Future<Output = Option<Metadata>> + Send + '_>> {
-        Box::pin(async move {
-            Some(
-                Metadata::new(Dbms::Mssql)
-            )
-        })
+        Box::pin(async move { Some(Metadata::new(Dbms::Mssql)) })
     }
 
     fn query_dbs_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>> {
@@ -165,6 +161,39 @@ impl Sniffer for MSSQLSniffer<'_> {
             .iter()
             .map(|row| row.get::<&str>(0).to_string())
             .collect()
+        })
+    }
+
+    fn query_col_exac(
+        &mut self,
+        table_name: &str,
+        column_name: &str,
+    ) -> Pin<Box<dyn Future<Output = ColumnExactitude> + Send + '_>> {
+        let column_name = column_name.to_string();
+        let table_name = table_name.to_string();
+
+        Box::pin(async move {
+            let rows = self.query(&format!(
+                "SELECT CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_PRECISION_RADIX, NUMERIC_SCALE
+            FROM 
+                INFORMATION_SCHEMA.COLUMNS
+            WHERE 
+                TABLE_NAME = '{table_name}' AND COLUMN_NAME = '{column_name}';"
+            )).await;
+            
+            let row = rows.first().expect("Column not found");
+
+            let length = row.opt_get::<i32>(0);
+            let precision = row.opt_get::<i32>(1);
+            let radix = row.opt_get::<i32>(2);
+            let scale = row.opt_get::<i32>(3);
+
+            ColumnExactitude::new(
+                length,
+                precision,
+                radix,
+                scale,
+            )
         })
     }
 
@@ -231,8 +260,10 @@ impl Sniffer for MSSQLSniffer<'_> {
                         WHERE 
                             TABLE_NAME = '{table_name}' AND COLUMN_NAME = '{column_name}'"
             ))
-            .await.first()?
-            .opt_get::<&str>(0).map(|s| s.to_string())
+            .await
+            .first()?
+            .opt_get::<&str>(0)
+            .map(|s| s.to_string())
         })
     }
 
@@ -283,7 +314,8 @@ impl Sniffer for MSSQLSniffer<'_> {
                 WHERE table_name = '{table_name}' and column_name = '{column_name}'"
                 )).await;
 
-            let field_key = field_key.first()
+            let field_key = field_key
+                .first()
                 .expect("Error fetching key")
                 .opt_get(0)
                 .unwrap_or("NO KEY");
@@ -344,7 +376,6 @@ impl Sniffer for MSSQLSniffer<'_> {
         let table_name = table_name.to_string();
 
         Box::pin(async move {
-
             let sql = &format!("SELECT
                 pk_tab.name AS ReferencedTable,
                 pk_col.name AS ReferencedColumn,
@@ -367,11 +398,11 @@ impl Sniffer for MSSQLSniffer<'_> {
             ORDER BY fk.object_id;");
 
             let mut relations = Vec::new();
-            
+
             let mut last_fk_id = None;
             let mut from = Vec::new();
             let mut to = Vec::new();
-            
+
             for row in self.query(sql).await {
                 let ref_table_name: &str = row.get(0);
                 let ref_column_name: &str = row.get(1);
@@ -390,8 +421,10 @@ impl Sniffer for MSSQLSniffer<'_> {
                 last_fk_id.replace(fk_id);
             }
 
-            if !from.is_empty() { relations.push((from, to));  }
-            
+            if !from.is_empty() {
+                relations.push((from, to));
+            }
+
             relations
         })
     }

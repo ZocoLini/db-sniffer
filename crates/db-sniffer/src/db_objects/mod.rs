@@ -1,4 +1,4 @@
-use getset::Getters;
+use getset::{Getters, Setters};
 use std::cmp::PartialEq;
 use std::str::FromStr;
 
@@ -168,10 +168,9 @@ pub struct Column {
     #[get = "pub"]
     nullable: bool,
     #[get = "pub"]
-    key: KeyType,
+    key: KeyType
 }
 
-/// References are stored as (table, column)
 impl Column {
     pub fn new(id: ColumnId, r#type: ColumnType, nullable: bool, key: KeyType) -> Self {
         Column {
@@ -179,9 +178,10 @@ impl Column {
             r#type,
             nullable,
             key,
+            column_exactitude: ColumnExactitude::default(),
         }
     }
-
+    
     pub fn not_nullable(&self) -> bool {
         !self.nullable
     }

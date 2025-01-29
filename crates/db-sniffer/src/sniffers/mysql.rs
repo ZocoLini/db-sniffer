@@ -1,6 +1,6 @@
-use crate::db_objects::{ColumnId, Dbms, GenerationType, KeyType, Metadata};
+use crate::db_objects::{ColumnExactitude, ColumnId, Dbms, GenerationType, KeyType, Metadata};
 use crate::error::Error::MissingParamError;
-use crate::sniffers::{Sniffer, RowGetter};
+use crate::sniffers::{RowGetter, Sniffer};
 use crate::ConnectionParams;
 use sqlx::{Connection, Executor, MySqlConnection, Row};
 use std::future::Future;
@@ -135,6 +135,10 @@ impl<'a> Sniffer for MySQLSniffer<'a> {
                 .map(|row| row.get::<&str>(0).to_string())
                 .collect()
         })
+    }
+
+    fn query_col_exac(&mut self, table_name: &str, column_name: &str) -> Pin<Box<dyn Future<Output = ColumnExactitude> + Send + '_>> {
+        todo!()
     }
 
     fn query_col_type(
