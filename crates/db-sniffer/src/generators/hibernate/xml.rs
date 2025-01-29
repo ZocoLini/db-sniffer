@@ -247,7 +247,7 @@ impl<'a> XMLGenerator<'a> {
       <generator class="{}"/>
     </id>"#,
                     naming::to_lower_camel_case(id.name()),
-                    hibernate::column_type_to_hibernate_type(id.r#type()),
+                    id.r#type().to_hibernate(),
                     &generate_column_xml(id),
                     gen_class
                 ));
@@ -268,7 +268,7 @@ impl<'a> XMLGenerator<'a> {
       </key-property>
 "#,
                         naming::to_lower_camel_case(id_column.name()),
-                        hibernate::column_type_to_hibernate_type(id_column.r#type()),
+                        id_column.r#type().to_hibernate(),
                         &generate_column_xml(id_column)
                     ));
                 }
@@ -298,7 +298,7 @@ impl<'a> XMLGenerator<'a> {
       {}
     </property>"#,
                     naming::to_lower_camel_case(column.name()),
-                    hibernate::column_type_to_hibernate_type(column.r#type()),
+                    column.r#type().to_hibernate(),
                     &generate_column_xml(column)
                 ));
             }

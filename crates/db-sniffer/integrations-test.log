@@ -163,3 +163,12 @@
 [INFO] - 1738157024 - Generation took 5.023876ms
 [INFO] - 1738190203 - Starting introspection
 [INFO] - 1738190298 - Starting introspection
+[INFO] - 1738190635 - Starting introspection
+[INFO] - 1738190753 - Starting introspection
+[INFO] - 1738190764 - Introspection took 11.149980392s
+[INFO] - 1738190764 - Starting generation
+[INFO] - 1738190764 - Generation took 6.721578ms
+[INFO] - 1738190945 - Starting introspection
+[INFO] - 1738190957 - Introspection took 11.785375953s
+[INFO] - 1738190957 - Starting generation
+[INFO] - 1738190957 - Generation took 6.906846ms

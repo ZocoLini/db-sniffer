@@ -13,23 +13,6 @@ pub use jpa::JPAGenerator;
 pub use xml::XMLGenerator;
 use crate::generators::java;
 
-// TODO: Decimal not working. Ask other for the correct mapping type
-fn column_type_to_hibernate_type(column_type: &ColumnType) -> String {
-    match column_type {
-        ColumnType::Integer(_) => "int".to_string(),
-        ColumnType::Text(_) | ColumnType::Varchar(_) => "string".to_string(),
-        ColumnType::Blob(_) => "binary".to_string(),
-        ColumnType::Boolean => "boolean".to_string(),
-        ColumnType::Date => "date".to_string(),
-        ColumnType::DateTime => "timestamp".to_string(),
-        ColumnType::Time => "time".to_string(),
-        ColumnType::Double(_) => "double".to_string(),
-        ColumnType::Float(_) => "float".to_string(),
-        ColumnType::Char(_) => "char".to_string(),
-        ColumnType::Decimal(_, _) | ColumnType::Numeric(_) => "big_decimal".to_string(),
-    }
-}
-
 fn get_java_package_name(path: &Path) -> Option<String> {
     let mut package = String::new();
     package = String::new();
@@ -67,7 +50,7 @@ fn get_java_src_root(path: &Path) -> Option<PathBuf> {
 
 fn generate_field(column: &Column) -> Field {
     let field_name = naming::to_lower_camel_case(column.name());
-    let field_type = java::column_type_to_java_type(column.r#type());
+    let field_type = column.r#type().to_java();
 
     Field::new(field_name, field_type, Some(Visibility::Private), None)
 }

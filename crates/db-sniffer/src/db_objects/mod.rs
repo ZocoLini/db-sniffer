@@ -22,10 +22,11 @@ impl FromStr for ColumnType {
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let s = s.replace(" ", "");
         let regex = regex::Regex::new(r"(?P<type_name>[a-z]+)(\((?P<values>[\d,]+)\))?$")
             .expect("invalid regex");
 
-        let Some((type_name, values)) = regex.captures(s).map(|captures| {
+        let Some((type_name, values)) = regex.captures(&s).map(|captures| {
             let type_name = captures
                 .name("type_name")
                 .expect("type_name not found")
@@ -34,7 +35,6 @@ impl FromStr for ColumnType {
                 .name("values")
                 .map(|v| {
                     v.as_str()
-                        .replace(" ", "")
                         .split(',')
                         .map(|s| {
                             s.parse::<i32>()
@@ -67,6 +67,56 @@ impl FromStr for ColumnType {
             )),
             "numeric" => Ok(ColumnType::Numeric(0)),
             _ => Err(()),
+        }
+    }
+}
+
+impl ColumnType {
+    pub fn to_hibernate(&self) -> String {
+        match self {
+            ColumnType::Integer(_) => "int".to_string(),
+            ColumnType::Text(_) | ColumnType::Varchar(_) => "string".to_string(),
+            ColumnType::Blob(_) => "binary".to_string(),
+            ColumnType::Boolean => "boolean".to_string(),
+            ColumnType::Date => "date".to_string(),
+            ColumnType::DateTime => "timestamp".to_string(),
+            ColumnType::Time => "time".to_string(),
+            ColumnType::Double(_) => "double".to_string(),
+            ColumnType::Float(_) => "float".to_string(),
+            ColumnType::Char(_) => "char".to_string(),
+            ColumnType::Numeric(_) => "big_decimal".to_string(),
+            ColumnType::Decimal(precision, scale) => {
+                if *scale == 0 {
+                    "long".to_string()
+                } else {
+                    "big_decimal".to_string()
+                }
+            }
+        }
+    }
+
+    pub fn to_java(&self) -> dotjava::Type {
+        match self {
+            ColumnType::Integer(_) => dotjava::Type::integer(),
+            ColumnType::Text(_) | ColumnType::Varchar(_) => dotjava::Type::string(),
+            ColumnType::Blob(_) => dotjava::Type::new("byte[]".to_string(), "".to_string()),
+            ColumnType::Boolean => dotjava::Type::boolean(),
+            ColumnType::Date | ColumnType::DateTime | ColumnType::Time => {
+                dotjava::Type::new("Date".to_string(), "java.util".to_string())
+            }
+            ColumnType::Double(_) => dotjava::Type::double(),
+            ColumnType::Float(_) => dotjava::Type::float(),
+            ColumnType::Char(_) => dotjava::Type::character(),
+            ColumnType::Numeric(_) => {
+                dotjava::Type::new("BigDecimal".to_string(), "java.math".to_string())
+            }
+            ColumnType::Decimal(precision, scale) => {
+                if *scale == 0 {
+                    dotjava::Type::new("long".to_string(), "".to_string())
+                } else {
+                    dotjava::Type::new("BigDecimal".to_string(), "java.math".to_string())
+                }
+            }
         }
     }
 }
