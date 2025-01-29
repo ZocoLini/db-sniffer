@@ -225,13 +225,32 @@ async fn introspect_rel(
     to: Vec<ColumnId>,
     rel_owner: bool,
 ) -> Relation {
-    // TODO: Add multiple column support
     let from_table = from[0].table();
     let to_table = to[0].table();
 
     let from_col = from[0].name();
     let to_col = to[0].name();
-
+    
+    assert_eq!(from.len(), to.len());
+    
+    // TODO: Add multiple column support
+    // let mut on_string = "".to_string();
+    //
+    // from.iter().enumerate().for_each(|(i, _)| {
+    //     if i != 0 {
+    //         on_string.push_str(" and ");
+    //     }
+    //     on_string.push_str(&format!("f.{} = t.{}", from[i].name(), to[i].name()));
+    // });
+    // let mut by_string = "".to_string();
+    // 
+    // from.iter().enumerate().for_each(|(i, _)| {
+    //     if i != 0 {
+    //         by_string.push_str(", ");
+    //     }
+    //     by_string.push_str(&format!("t.{}", to[i].name()));
+    // });
+    
     let sql = format!(
         r#"
         select count(*) 
@@ -251,8 +270,7 @@ async fn introspect_rel(
         let mut is_one_to_one = true;
 
         for row in rows {
-            let count: i32 = row.get(0);
-            if count != 1 {
+            if row.get::<i32>(0) != 1 {
                 is_one_to_one = false;
                 break;
             }

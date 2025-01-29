@@ -1,17 +1,16 @@
+#![allow(unused)]
+
 extern crate core;
 
 use getset::Getters;
 use std::str::FromStr;
 
-#[allow(unused)]
-pub mod db_objects;
-#[allow(unused)]
-pub mod generators;
-#[allow(unused)]
+mod db_objects;
 mod sniffers;
-
 mod error;
 mod naming;
+
+pub mod generators;
 
 pub use error::Error;
 pub use sniffers::sniff;
@@ -59,7 +58,9 @@ impl FromStr for ConnectionParams {
                 if let Ok(port) = port.parse::<u16>() {
                     Some(port)
                 } else {
-                    return Err(Error::InvalidConnStringError("port is not a number".to_string()));
+                    return Err(Error::InvalidConnStringError(
+                        "port is not a number".to_string(),
+                    ));
                 }
             } else {
                 None

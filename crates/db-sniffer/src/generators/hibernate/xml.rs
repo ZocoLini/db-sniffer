@@ -127,8 +127,8 @@ impl<'a> XMLGenerator<'a> {
         <property name="hibernate.connection.url">{conn_str}</property>
         <property name="hibernate.connection.username">{}</property>
         <property name="hibernate.connection.password">{}</property>"#,
-            hibernate::escape_xml_special_chars(conn_params.user().as_ref().unwrap()),
-            hibernate::escape_xml_special_chars(conn_params.password().as_ref().unwrap()),
+            escape_xml_special_chars(conn_params.user().as_ref().unwrap()),
+            escape_xml_special_chars(conn_params.password().as_ref().unwrap()),
         );
 
         format!(
@@ -574,4 +574,12 @@ impl<'a> XMLGenerator<'a> {
 
         java_class.into()
     }
+}
+
+fn escape_xml_special_chars(text: &str) -> String {
+    text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&apos;")
 }

@@ -52,9 +52,6 @@ impl<'a> MSSQLSniffer<'a> {
         tcp.set_nodelay(true)
             .map_err(|e| crate::Error::DBConnectionError(e.to_string()))?;
 
-        // To be able to use Tokio's tcp, we're using the `compat_write` from
-        // the `TokioAsyncWriteCompatExt` to get a stream compatible with the
-        // traits from the `futures` crate.
         let mut client = Client::connect(config, tcp.compat_write())
             .await
             .map_err(|e| crate::Error::DBConnectionError(e.to_string()))?;
