@@ -85,13 +85,7 @@ impl ColumnType {
             ColumnType::Float(_) => "float".to_string(),
             ColumnType::Char(_) => "char".to_string(),
             ColumnType::Numeric(_) => "big_decimal".to_string(),
-            ColumnType::Decimal(precision, scale) => {
-                if *scale == 0 {
-                    "long".to_string()
-                } else {
-                    "big_decimal".to_string()
-                }
-            }
+            ColumnType::Decimal(precision, scale) => "big_decimal".to_string()
         }
     }
 
@@ -110,13 +104,7 @@ impl ColumnType {
             ColumnType::Numeric(_) => {
                 dotjava::Type::new("BigDecimal".to_string(), "java.math".to_string())
             }
-            ColumnType::Decimal(precision, scale) => {
-                if *scale == 0 {
-                    dotjava::Type::new("long".to_string(), "".to_string())
-                } else {
-                    dotjava::Type::new("BigDecimal".to_string(), "java.math".to_string())
-                }
-            }
+            ColumnType::Decimal(precision, scale) => dotjava::Type::new("BigDecimal".to_string(), "java.math".to_string())
         }
     }
 }

@@ -192,8 +192,6 @@ impl<'a> XMLGenerator<'a> {
     fn generate_table_xml(&self, table: &Table) -> String {
         let package = &self.package;
 
-        let mut used_names: HashMap<String, i32> = HashMap::new();
-
         let xml = format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE hibernate-mapping PUBLIC
@@ -215,8 +213,7 @@ impl<'a> XMLGenerator<'a> {
             generate_references_to_xml(
                 table,
                 package,
-                self.sniff_results.database(),
-                &mut used_names
+                self.sniff_results.database()
             )
         );
 
@@ -325,7 +322,7 @@ impl<'a> XMLGenerator<'a> {
             if let ColumnType::Decimal(precision, scale) = column.r#type() {
                 column_str.push_str(&format!(r#" precision="{precision}""#));
                 
-                if *scale > 2 && *scale != 0 {
+                if *scale != 2 {
                     column_str.push_str(&format!(r#" scale="{scale}""#));
                 }
             }
@@ -350,8 +347,8 @@ impl<'a> XMLGenerator<'a> {
             table: &Table,
             package: &str,
             database: &Database,
-            used_names: &mut HashMap<String, i32>,
         ) -> String {
+            let mut used_names = HashMap::new();
             let mut result = "\n    <!-- References -->".to_string();
 
             table.references().iter().for_each(|r| {
@@ -361,11 +358,11 @@ impl<'a> XMLGenerator<'a> {
                     .key()
                 {
                     result.push_str(&generate_relation_xml(
-                        r, package, database, true, false, false, used_names,
+                        r, package, database, true, false, false, &mut used_names,
                     ));
                 } else {
                     result.push_str(&generate_relation_xml(
-                        r, package, database, true, true, true, used_names,
+                        r, package, database, true, true, true, &mut used_names,
                     ));
                 };
             });
@@ -377,7 +374,7 @@ impl<'a> XMLGenerator<'a> {
                 .iter()
                 .for_each(|r| {
                     result.push_str(&generate_relation_xml(
-                        r, package, database, false, true, true, used_names,
+                        r, package, database, false, true, true, &mut used_names,
                     ));
                 });
 

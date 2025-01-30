@@ -39,39 +39,39 @@ impl Type {
     }
 
     pub fn string() -> Self {
-        Self::new("String".to_string(), "java.lang".to_string())
+        Self::new("String".to_string(), "".to_string())
     }
 
     pub fn integer() -> Self {
-        Self::new("Integer".to_string(), "java.lang".to_string())
+        Self::new("Integer".to_string(), "".to_string())
     }
 
     pub fn boolean() -> Self {
-        Self::new("Boolean".to_string(), "java.lang".to_string())
+        Self::new("Boolean".to_string(), "".to_string())
     }
 
     pub fn character() -> Self {
-        Self::new("Character".to_string(), "java.lang".to_string())
+        Self::new("Character".to_string(), "".to_string())
     }
 
     pub fn byte() -> Self {
-        Self::new("Byte".to_string(), "java.lang".to_string())
+        Self::new("Byte".to_string(), "".to_string())
     }
 
     pub fn short() -> Self {
-        Self::new("Short".to_string(), "java.lang".to_string())
+        Self::new("Short".to_string(), "".to_string())
     }
 
     pub fn long() -> Self {
-        Self::new("Long".to_string(), "java.lang".to_string())
+        Self::new("Long".to_string(), "".to_string())
     }
 
     pub fn float() -> Self {
-        Self::new("Float".to_string(), "java.lang".to_string())
+        Self::new("Float".to_string(), "".to_string())
     }
 
     pub fn double() -> Self {
-        Self::new("Double".to_string(), "java.lang".to_string())
+        Self::new("Double".to_string(), "".to_string())
     }
 
     pub fn void() -> Self {
@@ -79,7 +79,7 @@ impl Type {
     }
 
     pub fn package_required(&self) -> String {
-        if self.package == "" {
+        if self.package.is_empty() {
             return "".to_string();
         }
 
@@ -97,7 +97,7 @@ impl Type {
 
 impl Into<String> for Type {
     fn into(self) -> String {
-        if self.generics.len() == 0 {
+        if self.generics.is_empty() {
             return self.name;
         }
 
