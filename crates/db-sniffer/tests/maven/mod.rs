@@ -50,7 +50,7 @@ impl MavenProject {
         dependencies.push(Dependencie::new(
             "org.hibernate",
             "hibernate-core",
-            "4.3.11.Final",
+            "6.6.5.Final",
         ));
         
         Self {
@@ -271,7 +271,7 @@ public class Main
         finally
         {
             if (session != null) session.close();
-            sessionFactory.close();
+            if (sessionFactory != null) sessionFactory.close();
         }
     }
 
@@ -288,17 +288,17 @@ public class Main
         id.setPersonId(1);
         id.setProjectId(1);
 
-        PersonProject personProject = (PersonProject) session.get(PersonProject.class, id);
+        PersonProject personProject = session.get(PersonProject.class, id);
 
         assertEquals("John Smith", personProject.getPerson().getName());
         assertEquals("Website Redesign", personProject.getProject().getName());
 
-        Department department = (Department) session.get(Department.class, 2);
+        Department department = session.get(Department.class, 2);
         assertEquals("Marketing", department.getName());
         assertEquals(2, department.getPersons().size());
 
         List<Project> project =
-                (List<Project>) session.createQuery("from Project p where p.personProjects.size = 2").list();
+                session.createQuery("from Project p where size(p.personProjects) = 2", Project.class).list();
         assertEquals(3, project.size());
 
         System.out.println("All queries are correct");
@@ -308,33 +308,33 @@ public class Main
     {
         session.beginTransaction();
 
-        Person person = (Person) session.get(Person.class, 1);
+        Person person = session.get(Person.class, 1);
         person.setName("Test");
         person.getAddress().setCity("Test");
 
         List<Project> projects =
-                (List<Project>) session.createQuery("from Project p where p.personProjects.size = 2").list();
+                session.createQuery("from Project p where size(p.personProjects) = 2", Project.class).list();
         projects.forEach(p -> p.setName("Test"));
 
         projects =
-                (List<Project>) session
+                session
                         .createQuery("from Project p where p.id not in " +
-    "(select pp.project.id from PersonProject pp where pp.person.id = :personId)")
-                        .setInteger("personId", person.getId())
+                                "(select pp.project.id from PersonProject pp where pp.person.id = :personId)", Project.class)
+                        .setParameter("personId", person.getId())
                         .list();
 
         projects.forEach(p -> {
             PersonProject personProject = new PersonProject();
             personProject.setPerson(person);
             personProject.setProject(p);
-            
+
             PersonProjectId id = new PersonProjectId();
             id.setPersonId(person.getId());
             id.setProjectId(p.getId());
-            
+
             personProject.setId(id);
-            
-            session.save(personProject);
+
+            session.persist(personProject);
         });
 
         session.getTransaction().commit();
@@ -344,16 +344,15 @@ public class Main
 
     private static void verifyUpdates(Session session)
     {
-        Person person = (Person) session.get(Person.class, 1);
+        Person person = session.get(Person.class, 1);
 
         assertEquals("Test", person.getName());
         assertEquals("Test", person.getAddress().getCity());
-        
-        List<Project> projects =
-                (List<Project>) session
+
+        List<Project> projects = session
                         .createQuery("from Project p where p.id not in " +
-    "(select pp.project.id from PersonProject pp where pp.person.id = :personId)")
-                        .setInteger("personId", person.getId())
+    "(select pp.project.id from PersonProject pp where pp.person.id = :personId)", Project.class)
+                        .setParameter("personId", person.getId())
                         .list();
         
         assertEquals(0, projects.size());

@@ -1,20 +1,20 @@
-use crate::db_objects::{ColumnId, GenerationType, KeyType};
-use crate::sniffers::{DatabaseSniffer, RowGetter};
-use crate::ConnectionParams;
+use crate::db_objects::{ColumnId, ColumnType, Dbms, GenerationType, KeyType, Metadata};
+use crate::sniffers::{ConnectionParams, RowGetter, Sniffer};
 use sqlx::Row;
 use std::future::Future;
 use std::pin::Pin;
+use std::str::FromStr;
 use tiberius::{AuthMethod, Client, Config};
 use tokio::net::TcpStream;
 use tokio_util::compat::{Compat, FuturesAsyncReadCompatExt, TokioAsyncWriteCompatExt};
 
-pub(super) struct MSSQLSniffer {
-    conn_params: ConnectionParams,
+pub(super) struct MSSQLSniffer<'a> {
+    conn_params: &'a ConnectionParams,
     client: Client<Compat<TcpStream>>,
 }
 
-impl MSSQLSniffer {
-    pub async fn new(params: ConnectionParams) -> Result<Self, crate::Error> {
+impl<'a> MSSQLSniffer<'a> {
+    pub async fn new(params: &'a ConnectionParams) -> Result<Self, crate::Error> {
         let user = params
             .user
             .as_ref()
@@ -52,9 +52,6 @@ impl MSSQLSniffer {
         tcp.set_nodelay(true)
             .map_err(|e| crate::Error::DBConnectionError(e.to_string()))?;
 
-        // To be able to use Tokio's tcp, we're using the `compat_write` from
-        // the `TokioAsyncWriteCompatExt` to get a stream compatible with the
-        // traits from the `futures` crate.
         let mut client = Client::connect(config, tcp.compat_write())
             .await
             .map_err(|e| crate::Error::DBConnectionError(e.to_string()))?;
@@ -93,7 +90,15 @@ impl MSSQLSniffer {
 //     }
 // }
 
-impl DatabaseSniffer for MSSQLSniffer {
+impl Sniffer for MSSQLSniffer<'_> {
+    fn close_conn(mut self) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        Box::pin(async move {
+            if let Err(e) = self.client.close().await {
+                println!("Error closing db connection: {}", e)
+            }
+        })
+    }
+
     fn query(&mut self, query: &str) -> Pin<Box<dyn Future<Output = Vec<RowGetter>> + Send + '_>> {
         let query = query.to_string();
 
@@ -109,6 +114,10 @@ impl DatabaseSniffer for MSSQLSniffer {
                 .map(RowGetter::MSSQLRow)
                 .collect()
         })
+    }
+
+    fn query_metadata(&mut self) -> Pin<Box<dyn Future<Output = Option<Metadata>> + Send + '_>> {
+        Box::pin(async move { Some(Metadata::new(Dbms::Mssql)) })
     }
 
     fn query_dbs_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>> {
@@ -159,22 +168,30 @@ impl DatabaseSniffer for MSSQLSniffer {
         &mut self,
         table_name: &str,
         column_name: &str,
-    ) -> Pin<Box<dyn Future<Output = String> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = ColumnType> + Send + '_>> {
         let table_name = table_name.to_string();
         let column_name = column_name.to_string();
 
         Box::pin(async move {
-            self.query(&format!(
-                "SELECT DATA_TYPE
-            FROM 
-                INFORMATION_SCHEMA.COLUMNS
-            WHERE 
+            let col_type = self.query(&format!(
+                "SELECT
+                    CASE
+                        WHEN CHARACTER_MAXIMUM_LENGTH IS NOT NULL THEN CONCAT(DATA_TYPE, '(', CHARACTER_MAXIMUM_LENGTH, ')')
+                        WHEN NUMERIC_PRECISION IS NOT NULL AND NUMERIC_SCALE IS NOT NULL THEN CONCAT(DATA_TYPE, '(', NUMERIC_PRECISION, ', ', NUMERIC_SCALE, ')')
+                        WHEN NUMERIC_PRECISION IS NOT NULL AND NUMERIC_SCALE IS NULL THEN CONCAT(DATA_TYPE, '(', NUMERIC_PRECISION, ')')
+                        ELSE DATA_TYPE
+                    END
+                FROM
+                    INFORMATION_SCHEMA.COLUMNS
+                WHERE
                 TABLE_NAME = '{table_name}' AND COLUMN_NAME = '{column_name}'"
             ))
             .await
             .iter()
             .map(|row| row.get::<&str>(0).to_string())
-            .collect()
+            .collect::<String>();
+
+            ColumnType::from_str(&col_type).unwrap_or_else(|_| panic!("Error parsing column type: {col_type}"))
         })
     }
 
@@ -218,8 +235,10 @@ impl DatabaseSniffer for MSSQLSniffer {
                         WHERE 
                             TABLE_NAME = '{table_name}' AND COLUMN_NAME = '{column_name}'"
             ))
-            .await.first()?
-            .opt_get::<&str>(0).map(|s| s.to_string())
+            .await
+            .first()?
+            .opt_get::<&str>(0)
+            .map(|s| s.to_string())
         })
     }
 
@@ -270,7 +289,8 @@ impl DatabaseSniffer for MSSQLSniffer {
                 WHERE table_name = '{table_name}' and column_name = '{column_name}'"
                 )).await;
 
-            let field_key = field_key.first()
+            let field_key = field_key
+                .first()
                 .expect("Error fetching key")
                 .opt_get(0)
                 .unwrap_or("NO KEY");
@@ -331,7 +351,6 @@ impl DatabaseSniffer for MSSQLSniffer {
         let table_name = table_name.to_string();
 
         Box::pin(async move {
-
             let sql = &format!("SELECT
                 pk_tab.name AS ReferencedTable,
                 pk_col.name AS ReferencedColumn,
@@ -354,11 +373,11 @@ impl DatabaseSniffer for MSSQLSniffer {
             ORDER BY fk.object_id;");
 
             let mut relations = Vec::new();
-            
+
             let mut last_fk_id = None;
             let mut from = Vec::new();
             let mut to = Vec::new();
-            
+
             for row in self.query(sql).await {
                 let ref_table_name: &str = row.get(0);
                 let ref_column_name: &str = row.get(1);
@@ -377,66 +396,10 @@ impl DatabaseSniffer for MSSQLSniffer {
                 last_fk_id.replace(fk_id);
             }
 
-            if !from.is_empty() { relations.push((from, to));  }
-            
-            relations
-        })
-    }
-
-    fn query_table_referenced_by(
-        &mut self,
-        table_name: &str,
-    ) -> Pin<Box<dyn Future<Output = Vec<(Vec<ColumnId>, Vec<ColumnId>)>> + Send + '_>> {
-        let table_name = table_name.to_string();
-
-        Box::pin(async move {
-            let ref_table_name = table_name.as_str();
-            
-            let sql = &format!("SELECT
-                fk_tab.name AS ReferencingTable,
-                fk_col.name AS ReferencingColumn,
-                pk_col.name AS ReferencedColumn,
-                fk.object_id AS fk_id
-            FROM
-                sys.foreign_keys fk
-                    INNER JOIN
-                sys.foreign_key_columns fk_cols ON fk.object_id = fk_cols.constraint_object_id
-                    INNER JOIN
-                sys.tables fk_tab ON fk_tab.object_id = fk.parent_object_id
-                    INNER JOIN
-                sys.columns fk_col ON fk_col.object_id = fk_tab.object_id AND fk_col.column_id = fk_cols.parent_column_id
-                    INNER JOIN
-                sys.columns pk_col ON pk_col.object_id = fk.referenced_object_id AND pk_col.column_id = fk_cols.referenced_column_id
-            WHERE
-                fk.referenced_object_id = OBJECT_ID('{ref_table_name}')
-            ORDER BY fk.object_id;");
-
-            let mut relations = Vec::new();
-            
-            let mut last_fk_id = None;
-            let mut from = Vec::new();
-            let mut to = Vec::new();
-            
-            for row in self.query(sql).await {
-                let table_name: &str = row.get(0);
-                let column_name: &str = row.get(1);
-                let ref_column_name: &str = row.get(2);
-                let fk_id: i32 = row.get(3);
-
-                if last_fk_id.is_some() && last_fk_id.unwrap() != fk_id {
-                    relations.push((from, to));
-                    from = Vec::new();
-                    to = Vec::new();
-                }
-                
-                from.push(ColumnId::new(table_name, column_name));
-                to.push(ColumnId::new(ref_table_name, ref_column_name));
-
-                last_fk_id.replace(fk_id);
+            if !from.is_empty() {
+                relations.push((from, to));
             }
 
-            if !from.is_empty() { relations.push((from, to));  }
-            
             relations
         })
     }

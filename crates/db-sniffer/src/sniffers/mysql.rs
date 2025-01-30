@@ -1,17 +1,20 @@
-use crate::db_objects::{ColumnId, GenerationType, KeyType};
+use crate::db_objects::{
+    ColumnId, ColumnType, Dbms, GenerationType, KeyType, Metadata,
+};
 use crate::error::Error::MissingParamError;
-use crate::sniffers::{DatabaseSniffer, RowGetter};
-use crate::ConnectionParams;
+use crate::sniffers::{ConnectionParams, RowGetter, Sniffer};
 use sqlx::{Connection, Executor, MySqlConnection, Row};
 use std::future::Future;
 use std::pin::Pin;
-pub(super) struct MySQLSniffer {
-    conn_params: ConnectionParams,
+use std::str::FromStr;
+
+pub(super) struct MySQLSniffer<'a> {
+    conn_params: &'a ConnectionParams,
     conn: MySqlConnection,
 }
 
-impl MySQLSniffer {
-    pub async fn new(params: ConnectionParams) -> Result<Self, crate::Error> {
+impl<'a> MySQLSniffer<'a> {
+    pub async fn new(params: &'a ConnectionParams) -> Result<Self, crate::Error> {
         let user = params
             .user
             .as_ref()
@@ -70,7 +73,15 @@ impl MySQLSniffer {
 //     }
 // }
 
-impl DatabaseSniffer for MySQLSniffer {
+impl Sniffer for MySQLSniffer<'_> {
+    fn close_conn(self) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        Box::pin(async move {
+            if let Err(e) = self.conn.close().await {
+                eprintln!("Error closing connection: {}", e);
+            }
+        })
+    }
+
     fn query(&mut self, query: &str) -> Pin<Box<dyn Future<Output = Vec<RowGetter>> + Send + '_>> {
         let query = query.to_string();
 
@@ -82,6 +93,13 @@ impl DatabaseSniffer for MySQLSniffer {
                 .into_iter()
                 .map(RowGetter::MySQlRow)
                 .collect()
+        })
+    }
+
+    fn query_metadata(&mut self) -> Pin<Box<dyn Future<Output = Option<Metadata>> + Send + '_>> {
+        Box::pin(async move {
+            let dbms = Metadata::new(Dbms::MySQL);
+            Some(dbms)
         })
     }
 
@@ -126,28 +144,24 @@ impl DatabaseSniffer for MySQLSniffer {
         &mut self,
         table_name: &str,
         column_name: &str,
-    ) -> Pin<Box<dyn Future<Output = String> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = ColumnType> + Send + '_>> {
         let table_name = table_name.to_string();
         let column_name = column_name.to_string();
 
         Box::pin(async move {
-            self.query(format!("describe {}", table_name).as_str())
+            let col_type = self.query(format!("describe {}", table_name).as_str())
                 .await
                 .iter()
                 .filter_map(|row| {
                     if row.get::<&str>(0) == column_name {
-                        Some(
-                            String::from_utf8_lossy(row.get::<&[u8]>(1))
-                                .split("(")
-                                .next()
-                                .unwrap()
-                                .to_string(),
-                        )
+                        Some(String::from_utf8_lossy(row.get::<&[u8]>(1)))
                     } else {
                         None
                     }
                 })
-                .collect()
+                .collect::<String>();
+            
+            ColumnType::from_str(&col_type).expect("Error parsing column type")
         })
     }
 
@@ -311,66 +325,6 @@ impl DatabaseSniffer for MySQLSniffer {
                 //  Becasuse this is an option an doesn't have a default value,
                 //  we cant't place this line inside the if,
                 //  were it looks preattier.
-                last_constraint_name.replace(constraint_name);
-            }
-
-            if !from.is_empty() {
-                relations.push((from, to));
-            }
-
-            relations
-        })
-    }
-
-    // TODO: This method shouldn't be necesary.
-    //  We could iterate over the other tables when requesting
-    //  the data this method instrospects
-    //  and return the relations where the table is in the to part.
-    fn query_table_referenced_by(
-        &mut self,
-        table_name: &str,
-    ) -> Pin<Box<dyn Future<Output = Vec<(Vec<ColumnId>, Vec<ColumnId>)>> + Send + '_>> {
-        let table_name = table_name.to_string();
-
-        Box::pin(async move {
-            let ref_table_name = table_name;
-
-            let sql = &format!(
-                "SELECT
-                TABLE_NAME,
-                COLUMN_NAME,
-                REFERENCED_COLUMN_NAME,
-                CONSTRAINT_NAME
-            FROM
-                information_schema.KEY_COLUMN_USAGE
-            WHERE
-                REFERENCED_TABLE_NAME = '{ref_table_name}'
-            ORDER BY CONSTRAINT_NAME;"
-            );
-
-            let mut relations = Vec::new();
-
-            let mut last_constraint_name = None;
-            let mut from = Vec::new();
-            let mut to = Vec::new();
-
-            for row in self.query(sql).await.iter() {
-                let table_name: &str = &String::from_utf8_lossy(row.get(0));
-                let column_name: &str = row.get(1);
-                let ref_column_name: &str = row.get(2);
-                let constraint_name: &[u8] = row.get::<&[u8]>(3);
-
-                if last_constraint_name.is_some()
-                    && last_constraint_name.unwrap() != constraint_name
-                {
-                    relations.push((from, to));
-                    from = Vec::new();
-                    to = Vec::new();
-                }
-
-                from.push(ColumnId::new(table_name, column_name));
-                to.push(ColumnId::new(&ref_table_name, ref_column_name));
-
                 last_constraint_name.replace(constraint_name);
             }
 

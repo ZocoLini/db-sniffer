@@ -1,4 +1,4 @@
-FROM mysql:latest
+FROM docker.io/ubuntu/mysql
 
 ENV MYSQL_ROOT_PASSWORD=abc123.
 ENV MYSQL_DATABASE=test_db

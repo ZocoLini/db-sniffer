@@ -4,6 +4,7 @@ mod containers;
 mod hibernate;
 mod maven;
 mod test_dir;
+mod logs;
 
 use db_sniffer::generators;
 use std::fs;

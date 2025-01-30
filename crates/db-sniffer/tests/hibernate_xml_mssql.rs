@@ -8,6 +8,7 @@ mod containers;
 mod hibernate;
 mod maven;
 mod test_dir;
+mod logs;
 
 #[tokio::test]
 async fn integration_test_xml() {
