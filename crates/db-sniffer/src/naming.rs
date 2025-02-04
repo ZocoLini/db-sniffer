@@ -74,6 +74,7 @@ mod test {
         assert_eq!(to_upper_camel_case("users"), "Users");
         assert_eq!(to_upper_camel_case("user_address"), "UserAddress");
         assert_eq!(to_upper_camel_case("USERS_ADDRESS"), "UsersAddress");
+        assert_eq!(to_upper_camel_case("FAMILIAR"), "Familiar");
         assert_eq!(to_upper_camel_case("UserAddress"), "UserAddress");
         assert_eq!(to_upper_camel_case("UserAddress_"), "UserAddress");
         assert_eq!(to_upper_camel_case("_A"), "A");

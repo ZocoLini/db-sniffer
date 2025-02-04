@@ -251,10 +251,8 @@ impl<'a> XMLGenerator<'a> {
             } else {
                 result = result.add(&format!(
                     r#"
-    <composite-id name="{}" class="{}.{}">"#,
-                    "id",
-                    package,
-                    naming::to_upper_camel_case(&format!("{}Id", table.name())),
+    <composite-id name="id" class="{package}.{}Id">"#,
+                    naming::to_upper_camel_case(table.name()),
                 ));
 
                 for id_column in id_columns {
