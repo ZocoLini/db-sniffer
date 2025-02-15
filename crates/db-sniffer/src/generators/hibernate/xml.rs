@@ -422,7 +422,7 @@ impl<'a> XMLGenerator<'a> {
                 RelationType::OneToMany => {
                     format!(
                         r#"
-    <set name="{}s" table="{}" lazy="true" fetch="select">
+    <set name="{}s" table="{}" inverse="true" lazy="true" fetch="select">
       <key>
         {}
       </key>
