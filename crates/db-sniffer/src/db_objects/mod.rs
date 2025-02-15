@@ -49,11 +49,14 @@ impl FromStr for ColumnType {
             return Err(());
         };
 
+        let first_value = *values.first().unwrap_or(&0);
+        let second_value = *values.get(1).unwrap_or(&0);
+        
         match type_name {
             "int" | "integer" => Ok(ColumnType::Integer(0)),
             "text" => Ok(ColumnType::Text(0)),
-            "char" => Ok(ColumnType::Char(0)),
-            "varchar" => Ok(ColumnType::Varchar(0)),
+            "char" => Ok(ColumnType::Char(first_value)),
+            "varchar" => Ok(ColumnType::Varchar(first_value)),
             "float" => Ok(ColumnType::Float(0)),
             "double" => Ok(ColumnType::Double(0)),
             "date" => Ok(ColumnType::Date),
@@ -62,8 +65,8 @@ impl FromStr for ColumnType {
             "boolean" | "bool" => Ok(ColumnType::Boolean),
             "blob" => Ok(ColumnType::Blob(0)),
             "decimal" => Ok(ColumnType::Decimal(
-                *values.first().unwrap_or(&0),
-                *values.get(1).unwrap_or(&0),
+                first_value,
+                second_value,
             )),
             "numeric" => Ok(ColumnType::Numeric(0)),
             _ => Err(()),
@@ -85,7 +88,7 @@ impl ColumnType {
             ColumnType::Float(_) => "float".to_string(),
             ColumnType::Char(_) => "char".to_string(),
             ColumnType::Numeric(_) => "big_decimal".to_string(),
-            ColumnType::Decimal(precision, scale) => "big_decimal".to_string()
+            ColumnType::Decimal(precision, scale) => "big_decimal".to_string(),
         }
     }
 
@@ -104,7 +107,9 @@ impl ColumnType {
             ColumnType::Numeric(_) => {
                 dotjava::Type::new("BigDecimal".to_string(), "java.math".to_string())
             }
-            ColumnType::Decimal(precision, scale) => dotjava::Type::new("BigDecimal".to_string(), "java.math".to_string())
+            ColumnType::Decimal(precision, scale) => {
+                dotjava::Type::new("BigDecimal".to_string(), "java.math".to_string())
+            }
         }
     }
 }
@@ -357,6 +362,9 @@ mod tests {
         assert_eq!("numeric".parse::<ColumnType>(), Ok(ColumnType::Numeric(0)));
         assert_eq!("invalid".parse::<ColumnType>(), Err(()));
 
+        assert_eq!("char(3)".parse::<ColumnType>(), Ok(ColumnType::Char(3)));
+        assert_eq!("varchar(3)".parse::<ColumnType>(), Ok(ColumnType::Varchar(3)));
+        
         assert_eq!(
             "decimal(10)".parse::<ColumnType>(),
             Ok(ColumnType::Decimal(10, 0))

@@ -317,14 +317,21 @@ impl<'a> XMLGenerator<'a> {
                 }
             );
 
-            if let ColumnType::Decimal(precision, scale) = column.r#type() {
-                column_str.push_str(&format!(r#" precision="{precision}""#));
-                
-                if *scale != 2 {
-                    column_str.push_str(&format!(r#" scale="{scale}""#));
-                }
-            }
-
+            let col_length = match column.r#type() { 
+                ColumnType::Decimal(precision, scale) => {
+                    if *scale == 2 {
+                        format!(r#" precision="{precision}""#)
+                    } else {
+                        format!(r#" precision="{precision}" scale="{scale}""#)
+                    }
+                },
+                ColumnType::Varchar(len) => format!(r#" length="{len}""#),
+                ColumnType::Char(len) => format!(r#" length="{len}""#),
+                _ => "".to_string(),
+            };
+            
+            column_str.push_str(&col_length);
+            
             column_str.push_str("/>");
 
             column_str
