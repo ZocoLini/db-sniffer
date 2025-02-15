@@ -80,13 +80,13 @@ impl Into<String> for Class {
         let mut fields = String::new();
 
         for field in self.fields {
-            fields.push_str(&format!("    {}\n", <Field as Into<String>>::into(field.into())));
+            fields.push_str(&format!("    {}\n", <Field as Into<String>>::into(field)));
         }
 
         let mut methods = String::new();
 
         for method in self.methods {
-            methods.push_str(&format!("    {}\n", <Method as Into<String>>::into(method.into())));
+            methods.push_str(&format!("    {}\n", <Method as Into<String>>::into(method)));
         }
 
         let implements = if self.interfaces.is_empty() {
@@ -101,9 +101,15 @@ impl Into<String> for Class {
             format!(" implements {}", interfaces)
         };
         
+        let package_string = if self.package.is_empty() {
+            "".to_string()
+        } else {
+            format!("package {};", self.package)
+        };
+        
         format!(
-            "package {};\n\n{imports}\n\npublic class {}{implements} {{\n{fields}\n{methods}\n}}",
-            self.package, self.name
+            "{package_string}\n\n{imports}\n\npublic class {}{implements} {{\n{fields}\n{methods}\n}}",
+            self.name
         )
     }
 }
