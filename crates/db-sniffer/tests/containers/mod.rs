@@ -40,14 +40,13 @@ impl DBContainer {
         // docker run --name <name> -p 8000:3306 <image>
         self.build();
 
-        process::Command::new("podman")
+        process::Command::new("docker")
             .args([
                 "run",
                 "--name",
                 CONTAINER_NAME,
                 "-p",
                 format!("8000:{}", self.port).as_str(),
-                "--replace",
                 "--rm",
                 "-d",
                 &self.image,
@@ -60,7 +59,7 @@ impl DBContainer {
 
     fn build(&self) {
         // docker build -t <image> -f <file> .
-        process::Command::new("podman")
+        process::Command::new("docker")
             .current_dir(containers_dir())
             .args(["build", "-t", &self.image, "-f", &self.build_file, "."])
             .spawn()
@@ -72,8 +71,8 @@ impl DBContainer {
     pub fn stop(&self) {
         // docker stop <name>
         // docker rm <name>
-        process::Command::new("podman")
-            .args(["stop", "--time=30", CONTAINER_NAME])
+        process::Command::new("docker")
+            .args(["stop", CONTAINER_NAME])
             .spawn()
             .expect("Failed to stop Docker container")
             .wait()
