@@ -11,7 +11,7 @@ pub fn to_upper_camel_case(s: &str) -> String {
             .as_str(),
     );
 
-    name
+    remove_plural(name)
 }
 
 pub fn to_lower_camel_case(s: &str) -> String {
@@ -62,7 +62,15 @@ pub fn to_lower_camel_case(s: &str) -> String {
             .as_str(),
     );
 
-    name
+    remove_plural(name)
+}
+
+fn remove_plural(s: String) -> String {
+    if s.ends_with("s") && !s.ends_with("ss") {
+        return s[..s.len() - 1].to_string();
+    }
+
+    s
 }
 
 #[cfg(test)]
@@ -71,7 +79,7 @@ mod test {
 
     #[tokio::test]
     async fn test_to_upper_camel_case() {
-        assert_eq!(to_upper_camel_case("users"), "Users");
+        assert_eq!(to_upper_camel_case("users"), "User");
         assert_eq!(to_upper_camel_case("user_address"), "UserAddress");
         assert_eq!(to_upper_camel_case("USERS_ADDRESS"), "UsersAddress");
         assert_eq!(to_upper_camel_case("FAMILIAR"), "Familiar");
@@ -83,7 +91,7 @@ mod test {
 
     #[tokio::test]
     async fn test_to_lower_camel_case() {
-        assert_eq!(to_lower_camel_case("users"), "users");
+        assert_eq!(to_lower_camel_case("user"), "user");
         assert_eq!(to_lower_camel_case("user_address"), "userAddress");
         assert_eq!(to_lower_camel_case("USERS_ADDRESS"), "usersAddress");
         assert_eq!(to_lower_camel_case("UserAddress"), "userAddress");

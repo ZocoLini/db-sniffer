@@ -134,7 +134,8 @@ impl Sniffer for MSSQLSniffer<'_> {
                 r#"
                     select TABLE_NAME 
                     from INFORMATION_SCHEMA.TABLES  
-                    where TABLE_TYPE = 'BASE TABLE';"#,
+                    where TABLE_TYPE = 'BASE TABLE'
+                    order by TABLE_NAME;"#,
             )
             .await
             .iter()
@@ -260,7 +261,6 @@ impl Sniffer for MSSQLSniffer<'_> {
                         CASE
                             WHEN pk.name IS NOT NULL THEN 'PRI'
                             WHEN uq.name IS NOT NULL THEN 'UNI'
-                            WHEN fk_col.constraint_object_id IS NOT NULL THEN 'FK'
                             END AS key_type
                     FROM
                         sys.tables t
@@ -268,8 +268,6 @@ impl Sniffer for MSSQLSniffer<'_> {
                         sys.columns c ON c.object_id = t.object_id
                             LEFT JOIN
                         sys.index_columns ic ON ic.object_id = t.object_id AND ic.column_id = c.column_id
-                            LEFT JOIN
-                        sys.foreign_key_columns fk_col ON fk_col.parent_object_id = c.object_id AND fk_col.parent_column_id = c.column_id
                             LEFT JOIN
                         sys.indexes idx ON idx.object_id = t.object_id AND idx.index_id = ic.index_id
                             LEFT JOIN
@@ -303,7 +301,6 @@ impl Sniffer for MSSQLSniffer<'_> {
                         KeyType::Primary(GenerationType::None)
                     }
                 }
-                "FK" => KeyType::Foreign,
                 "UNI" => KeyType::Unique,
                 _ => KeyType::None,
             }

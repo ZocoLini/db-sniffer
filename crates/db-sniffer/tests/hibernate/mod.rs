@@ -67,7 +67,7 @@ pub async fn start_hibernate_test(conn_str: &str, db_dependency: maven::Dependen
 
     assert!(output.status.success());
 
-    fs::remove_dir_all(test_dir).expect("Error removing the test dir");
+    return fs::remove_dir_all(test_dir).expect("Error removing the test dir");
     
     async fn aux(conn_str: &str, db_dependency: maven::Dependencie, test_dir: &str) -> Result<Output, String> {
         // Creating a Maven archetype project
@@ -75,7 +75,7 @@ pub async fn start_hibernate_test(conn_str: &str, db_dependency: maven::Dependen
 
         maven_project.add_dependency(db_dependency);
 
-        if let Err(e) = maven_project.create_archetype(maven::MAIN_CONTENT) {
+        if let Err(e) = maven_project.create_archetype(&maven::com_example_main_file_content()) {
             panic!("Failed to create Maven archetype project -> {}", e)
         }
 

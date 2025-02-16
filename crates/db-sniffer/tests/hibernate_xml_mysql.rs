@@ -11,7 +11,7 @@ use std::fs;
 use std::process::Output;
 
 #[tokio::test]
-async fn integration_test_xml() {
+async fn hibernate_xml_mysql() {
     let container = containers::DBContainer::new_mysql();
 
     hibernate::start_hibernate_test(

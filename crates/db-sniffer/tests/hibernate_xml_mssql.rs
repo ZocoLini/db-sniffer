@@ -11,7 +11,7 @@ mod test_dir;
 mod logs;
 
 #[tokio::test]
-async fn integration_test_xml() {
+async fn hibernate_xml_mssql() {
     let container = containers::DBContainer::new_mssql();
 
     hibernate::start_hibernate_test(

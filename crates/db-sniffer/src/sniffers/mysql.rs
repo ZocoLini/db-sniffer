@@ -117,11 +117,14 @@ impl Sniffer for MySQLSniffer<'_> {
 
     fn query_tab_names(&mut self) -> Pin<Box<dyn Future<Output = Vec<String>> + Send + '_>> {
         Box::pin(async move {
-            self.query("show tables")
+            let mut tables = self.query("show tables")
                 .await
                 .iter()
                 .map(|row| String::from_utf8_lossy(row.get(0)).to_string())
-                .collect()
+                .collect::<Vec<String>>();
+            
+            tables.sort();
+            tables
         })
     }
 
@@ -243,7 +246,6 @@ impl Sniffer for MySQLSniffer<'_> {
                         KeyType::Primary(GenerationType::None)
                     }
                 }
-                "MUL" => KeyType::Foreign,
                 "UNI" => KeyType::Unique,
                 _ => KeyType::None,
             }

@@ -20,13 +20,17 @@ create table Person (
     birthdate date,
     created datetime,
     department_id int,
-    salario numeric,
+    salario decimal(10, 2),
     salario_extra float,
-    paga_extra double precision,
     foreign key (department_id) references Department(id) -- one-to-many
 );
 go
-
+create table Developer (
+                           id int primary key,
+                           programming_language varchar(255),
+                           foreign key (id) references Person(id)
+);
+go
 create table Address (
     id int primary key identity(1, 1),
     street varchar(255),
@@ -59,6 +63,14 @@ create table Project (
 );
 go
 
+create table SubProject (
+    id int,
+    name varchar(255),
+    constraint PK_SUBPROJECT primary key (id),
+    constraint FK_SUBPROJECT_PROJECT foreign key (id) references Project(id)
+);
+go
+
 create table Person_Project (
     person_id int,
     project_id int,
@@ -75,7 +87,6 @@ create table DecimalSupport (
     decimal_4 decimal(20, 15),
     decimal_5 decimal(30, 20),
     decimal_6 decimal(10, 0),
-    decimal_7 decimal,
 );
 go
 
@@ -99,32 +110,45 @@ create table ComposedFKAsPKTable (
 );
 go
 create table ComposedFKTable (
-                                 id int primary key identity(1, 1),
-                                 fist_key int,
-                                 second_key int,
-                                 a int,
-                                 b int,
-                                 foreign key (fist_key, second_key) references ComposedPKTable(fist_key, second_key)
-
+    id int primary key identity(1, 1),
+    fist_key int,
+    second_key int,
+    a int,
+    b int,
+    foreign key (fist_key, second_key) references ComposedPKTable(fist_key, second_key),
+    foreign key (a, b) references ComposedPKTable(fist_key, second_key)
 );
 go
 
 -- Insert Department data (many-to-one with Person)
 INSERT INTO Department (name, abreviation) VALUES
-                                  ('Engineering', 'ENG'),
-                                  ('Marketing', 'MKT'),
-                                  ('Development', 'DEV'),
-                                  ('Human Resources', 'HRE'),
-                                  ('Finance', 'FIN');
+                                               ('Engineering', 'ENG'),
+                                               ('Marketing', 'MKT'),
+                                               ('Development', 'DEV'),
+                                               ('Human Resources', 'HRE'),
+                                               ('Finance', 'FIN'),
+                                               ('Development2', 'DE2');
 go
 -- Insert Person data
 INSERT INTO Person (name, age, birthdate, created, department_id, salario) VALUES
                                                                       ('John Smith', 35, '1989-03-15', GETDATE(), 1, 20.90),
-                                                                      ('Emma Wilson', 28, '1996-07-22', GETDATE(), 2,20.90),
+                                                                      ('Emma Wilson', 28, '1996-07-22', GETDATE(), 2, 20.90),
                                                                       ('Michael Brown', 42, '1982-11-30', GETDATE(), 2, 20.90),
                                                                       ('Sarah Davis', 31, '1993-05-08', GETDATE(), 3, 20.90),
-                                                                      ('James Johnson', 45, '1979-09-14', GETDATE(), 4, 20.90);
+                                                                      ('James Johnson', 45, '1979-09-14', GETDATE(), 4, 20.90),
+                                                                      ('John Doe', 35, '1989-03-15', GETDATE(), 6, 20.90),
+                                                                      ('Jane Doe', 28, '1996-07-22', GETDATE(), 6, 20.90),
+                                                                      ('Michael Doe', 42, '1982-11-30', GETDATE(), 6, 20.90),
+                                                                      ('Sarah Doe', 31, '1993-05-08', GETDATE(), 6, 20.90),
+                                                                      ('James Doe', 45, '1979-09-14', GETDATE(), 6, 20.90);
 
+go
+INSERT INTO Developer (id, programming_language) VALUES
+                                                     (6, 'Java'),
+                                                     (7, 'Python'),
+                                                     (8, 'JavaScript'),
+                                                     (9, 'C#'),
+                                                     (10, 'Ruby');
 go
 -- Insert Address data (one-to-one with Person)
 INSERT INTO Address (street, city, postal_code, person_id) VALUES
@@ -161,6 +185,15 @@ INSERT INTO Project (name)VALUES
                                ('Data Migration'),
                                ('Cloud Infrastructure'),
                                ('Marketing Campaign');
+go
+
+-- Insert SubProject data
+INSERT INTO SubProject (id, name) VALUES
+    (1, 'Website Design'),
+    (2, 'Website Development'),
+    (3, 'iOS App'),
+    (4, 'Android App'),
+    (5, 'Database Migration');
 go
 -- Insert Person_Project relationships (many-to-many)
 INSERT INTO Person_Project (person_id, project_id)

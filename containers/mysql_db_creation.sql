@@ -13,9 +13,8 @@ create table Person (
     birthdate date,
     created timestamp,
     department_id int,
-    salario numeric,
+    salario decimal(10, 2),
     salario_extra float,
-    paga_extra double,
     foreign key (department_id) references Department(id) # one-to-many
 );
 
@@ -53,6 +52,14 @@ create table Project (
     name varchar(255)
 );
 
+
+create table SubProject (
+    id int,
+    name varchar(255),
+    constraint PK_SUBPROJECT primary key (id),
+    constraint FK_SUBPROJECT_PROJECT foreign key (id) references Project(id)
+);
+
 create table Person_Project (
     person_id int,
     project_id int,
@@ -82,9 +89,12 @@ create table ComposedPKTable (
 create table ComposedFKAsPKTable (
     fist_key int,
     second_key int,
+    a int,
+    b int,
     other_field varchar(255),
     primary key (fist_key, second_key),
-    foreign key (fist_key, second_key) references ComposedPKTable(fist_key, second_key)
+    foreign key (fist_key, second_key) references ComposedPKTable(fist_key, second_key),
+    foreign key (a, b) references ComposedPKTable(fist_key, second_key)
 );
 
 create table ComposedFKTable (
@@ -107,17 +117,17 @@ INSERT INTO Department (name, abreviation) VALUES
                                                ('Development2', 'DE2');
 
 -- Insert Person data
-INSERT INTO Person (name, age, birthdate, created, department_id) VALUES
-                                                       ('John Smith', 35, '1989-03-15', NOW(), 1),
-                                                       ('Emma Wilson', 28, '1996-07-22', NOW(), 2),
-                                                       ('Michael Brown', 42, '1982-11-30', NOW(), 2),
-                                                       ('Sarah Davis', 31, '1993-05-08', NOW(), 3),
-                                                       ('James Johnson', 45, '1979-09-14', NOW(), 4),
-                                                       ('John Doe', 35, '1989-03-15', NOW(), 6),
-                                                       ('Jane Doe', 28, '1996-07-22', NOW(), 6),
-                                                       ('Michael Doe', 42, '1982-11-30', NOW(), 6),
-                                                       ('Sarah Doe', 31, '1993-05-08', NOW(), 6),
-                                                       ('James Doe', 45, '1979-09-14', NOW(), 6);
+INSERT INTO Person (name, age, birthdate, created, department_id, salario) VALUES
+                                                       ('John Smith', 35, '1989-03-15', NOW(), 1, 20.90),
+                                                       ('Emma Wilson', 28, '1996-07-22', NOW(), 2, 20.90),
+                                                       ('Michael Brown', 42, '1982-11-30', NOW(), 2, 20.90),
+                                                       ('Sarah Davis', 31, '1993-05-08', NOW(), 3, 20.90),
+                                                       ('James Johnson', 45, '1979-09-14', NOW(), 4, 20.90),
+                                                       ('John Doe', 35, '1989-03-15', NOW(), 6, 20.90),
+                                                       ('Jane Doe', 28, '1996-07-22', NOW(), 6, 20.90),
+                                                       ('Michael Doe', 42, '1982-11-30', NOW(), 6, 20.90),
+                                                       ('Sarah Doe', 31, '1993-05-08', NOW(), 6, 20.90),
+                                                       ('James Doe', 45, '1979-09-14', NOW(), 6, 20.90);
 
 INSERT INTO Developer (id, programming_language) VALUES
                                                   (6, 'Java'),
@@ -161,6 +171,14 @@ INSERT INTO Project (name) VALUES
                                ('Data Migration'),
                                ('Cloud Infrastructure'),
                                ('Marketing Campaign');
+
+-- Insert SubProject Data
+INSERT INTO SubProject (id, name) VALUES
+                                      (1, 'Website Design'),
+                                      (2, 'Website Development'),
+                                      (3, 'iOS App'),
+                                      (4, 'Android App'),
+                                      (5, 'Database Migration');
 
 -- Insert Person_Project relationships (many-to-many)
 INSERT INTO Person_Project (person_id, project_id) VALUES

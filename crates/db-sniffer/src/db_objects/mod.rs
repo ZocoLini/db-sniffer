@@ -114,24 +114,22 @@ impl ColumnType {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum GenerationType {
     None,
     AutoIncrement,
 }
 
-// TODO: Remove Foreign
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum KeyType {
     Primary(GenerationType),
-    Foreign,
     Unique,
     None,
 }
 
 pub struct TableId(Vec<Column>);
 
-#[derive(Getters)]
+#[derive(Getters, PartialEq, Debug)]
 pub struct Table {
     #[get = "pub"]
     name: String,
@@ -176,6 +174,7 @@ impl Table {
     }
 }
 
+#[derive(PartialEq, Debug)]
 pub enum RelationType {
     OneToOne,
     OneToMany,
@@ -194,7 +193,7 @@ impl RelationType {
     }
 }
 
-#[derive(Getters)]
+#[derive(Getters, PartialEq, Debug)]
 pub struct Relation {
     #[get = "pub"]
     from: Vec<ColumnId>,
@@ -214,7 +213,7 @@ impl Relation {
     }
 }
 
-#[derive(Getters, PartialEq, Clone)]
+#[derive(Getters, PartialEq, Clone, Debug)]
 pub struct ColumnId {
     #[get = "pub"]
     table: String,
@@ -231,7 +230,7 @@ impl ColumnId {
     }
 }
 
-#[derive(Getters, PartialEq)]
+#[derive(Getters, PartialEq, Debug)]
 pub struct Column {
     id: ColumnId,
     #[get = "pub"]
@@ -265,7 +264,7 @@ impl Column {
     }
 }
 
-#[derive(Getters)]
+#[derive(Getters, PartialEq, Debug)]
 pub struct Database {
     #[get = "pub"]
     name: String,
@@ -280,7 +279,7 @@ impl Database {
             tables: Vec::new(),
         }
     }
-
+    
     pub fn add_table(&mut self, table: Table) {
         self.tables.push(table);
     }

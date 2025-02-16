@@ -1,5 +1,6 @@
 use crate::db_objects::{
-    Column, ColumnType, Database, Dbms, GenerationType, KeyType, Relation, RelationType, Table,
+    Column, ColumnId, ColumnType, Database, Dbms, GenerationType, KeyType, Relation, RelationType,
+    Table,
 };
 use crate::generators::hibernate;
 use crate::naming;
@@ -210,11 +211,7 @@ impl<'a> XMLGenerator<'a> {
             table.name(),
             generate_id_xml(table, package),
             generate_properties_xml(table),
-            generate_references_to_xml(
-                table,
-                package,
-                self.sniff_results.database()
-            )
+            generate_references_to_xml(table, package, self.sniff_results.database())
         );
 
         return xml;
@@ -229,24 +226,60 @@ impl<'a> XMLGenerator<'a> {
 
             if id_columns.len() == 1 {
                 let id = id_columns[0];
-                let gen_class = match id.key() {
-                    KeyType::Primary(a) => match a {
-                        GenerationType::None => "assigned",
-                        GenerationType::AutoIncrement => "identity",
-                    },
-                    _ => panic!("This section should not be reached"),
+
+                let ref_col = table
+                    .references()
+                    .iter()
+                    .filter(|&r| {
+                        matches!(r.r#type(), RelationType::OneToOne)
+                    })
+                    .filter_map(|r| {
+                        if r.from()
+                            .iter()
+                            .filter(|c| c.name() == id.name())
+                            .collect::<Vec<&ColumnId>>()
+                            .len()
+                            == 1
+                        {
+                            Some(r.to().first().unwrap())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<&ColumnId>>();
+
+                let generator = if let Some(col) = ref_col.first() {
+                    format!(
+                        r#"
+      <generator class="foreign">
+          <param name="property">{}</param>
+      </generator>"#,
+                        naming::to_lower_camel_case(col.table())
+                    )
+                } else {
+                    let gen_class = match id.key() {
+                        KeyType::Primary(a) => match a {
+                            GenerationType::None => "assigned",
+                            GenerationType::AutoIncrement => "identity",
+                        },
+                        _ => panic!("This section should not be reached"),
+                    };
+
+                    format!(
+                        r#"
+      <generator class="{}"/>"#,
+                        gen_class
+                    )
                 };
 
                 result = result.add(&format!(
                     r#"
     <id name="{}" type="{}">
-      {}
-      <generator class="{}"/>
+      {}{generator}
     </id>"#,
                     naming::to_lower_camel_case(id.name()),
                     id.r#type().to_hibernate(),
-                    &generate_column_xml(id),
-                    gen_class
+                    &generate_column_xml(id)
                 ));
             } else {
                 result = result.add(&format!(
@@ -286,7 +319,6 @@ impl<'a> XMLGenerator<'a> {
                     continue;
                 }
 
-                // TODO: decimal type not working with big decimal as it is defined right now
                 result = result.add(&format!(
                     r#"
     <property name="{}" type="{}">
@@ -317,21 +349,21 @@ impl<'a> XMLGenerator<'a> {
                 }
             );
 
-            let col_length = match column.r#type() { 
+            let col_length = match column.r#type() {
                 ColumnType::Decimal(precision, scale) => {
                     if *scale == 2 {
                         format!(r#" precision="{precision}""#)
                     } else {
                         format!(r#" precision="{precision}" scale="{scale}""#)
                     }
-                },
+                }
                 ColumnType::Varchar(len) => format!(r#" length="{len}""#),
                 ColumnType::Char(len) => format!(r#" length="{len}""#),
                 _ => "".to_string(),
             };
-            
+
             column_str.push_str(&col_length);
-            
+
             column_str.push_str("/>");
 
             column_str
@@ -348,11 +380,7 @@ impl<'a> XMLGenerator<'a> {
         }
 
         // TODO: This many parameters makes this function ugly af
-        fn generate_references_to_xml(
-            table: &Table,
-            package: &str,
-            database: &Database,
-        ) -> String {
+        fn generate_references_to_xml(table: &Table, package: &str, database: &Database) -> String {
             let mut used_names = HashMap::new();
             let mut result = "\n    <!-- References -->".to_string();
 
@@ -363,11 +391,23 @@ impl<'a> XMLGenerator<'a> {
                     .key()
                 {
                     result.push_str(&generate_relation_xml(
-                        r, package, database, true, false, false, &mut used_names,
+                        r,
+                        package,
+                        database,
+                        true,
+                        false,
+                        false,
+                        &mut used_names,
                     ));
                 } else {
                     result.push_str(&generate_relation_xml(
-                        r, package, database, true, true, true, &mut used_names,
+                        r,
+                        package,
+                        database,
+                        true,
+                        true,
+                        true,
+                        &mut used_names,
                     ));
                 };
             });
@@ -379,7 +419,13 @@ impl<'a> XMLGenerator<'a> {
                 .iter()
                 .for_each(|r| {
                     result.push_str(&generate_relation_xml(
-                        r, package, database, false, true, true, &mut used_names,
+                        r,
+                        package,
+                        database,
+                        false,
+                        true,
+                        true,
+                        &mut used_names,
                     ));
                 });
 
@@ -396,6 +442,12 @@ impl<'a> XMLGenerator<'a> {
             update: bool,
             used_names: &mut HashMap<String, i32>,
         ) -> String {
+            let package = if package.is_empty() {
+                "".to_string()
+            } else { 
+                format!("{}.", package)
+            };
+            
             let cols: Vec<&Column> = relation
                 .from()
                 .iter()
@@ -418,10 +470,9 @@ impl<'a> XMLGenerator<'a> {
 
             match rel_type {
                 RelationType::OneToOne => {
-                    // TODO: Maybe the OneToOne should implement the multicolumn reference.
                     format!(
                         r#"
-    <one-to-one name="{}" class="{package}.{}" lazy="proxy" />"#,
+    <one-to-one name="{}" class="{package}{}" lazy="proxy" constrained="{rel_owner}"/>"#,
                         naming::to_lower_camel_case(&ref_table_name_count),
                         naming::to_upper_camel_case(ref_table_name)
                     )
@@ -433,7 +484,7 @@ impl<'a> XMLGenerator<'a> {
       <key>
         {}
       </key>
-      <one-to-many class="{package}.{}" />
+      <one-to-many class="{package}{}" />
     </set>"#,
                         naming::to_lower_camel_case(&ref_table_name_count),
                         ref_table_name_count,
@@ -454,7 +505,7 @@ impl<'a> XMLGenerator<'a> {
 
                     format!(
                         r#"
-    <many-to-one name="{}" class="{package}.{}" {insert_update_str} fetch="select">
+    <many-to-one name="{}" class="{package}{}" {insert_update_str} fetch="select">
       {}
     </many-to-one>"#,
                         naming::to_lower_camel_case(&ref_table_name_count),
@@ -494,18 +545,17 @@ impl<'a> XMLGenerator<'a> {
             table
                 .columns()
                 .iter()
-                // TODO: If removed, the pk of Developer doesn't get generated
-                .filter(|c| *c.key() != KeyType::Foreign)
+                .filter(|c| table_id.contains(c) || !table.is_col_fk(c.name()))
                 .map(hibernate::generate_field)
                 .collect()
         } else {
             let mut fields: Vec<Field> = table
                 .columns()
                 .iter()
-                .filter(|c| !table_id.contains(c))
+                .filter(|c| !(table_id.contains(c) || table.is_col_fk(c.name())))
                 .map(hibernate::generate_field)
                 .collect();
-
+            
             fields.push(Field::new(
                 "id".to_string(),
                 Type::new(format!("{}Id", class_name), "".to_string()),
