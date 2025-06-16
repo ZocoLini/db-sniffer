@@ -2,18 +2,6 @@ mod commands;
 
 use std::env;
 
-const BIN_NAME: &str = {
-    #[cfg(debug_assertions)]
-    {
-        "sniffer-dev"
-    }
-
-    #[cfg(not(debug_assertions))]
-    {
-        "sniffer"
-    }
-};
-
 #[derive(Debug)]
 enum Error
 {

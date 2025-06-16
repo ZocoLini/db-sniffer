@@ -1,5 +1,4 @@
 use crate::commands::Command;
-use crate::BIN_NAME;
 use std::collections::HashMap;
 use std::env;
 use std::path::PathBuf;
@@ -80,6 +79,6 @@ impl Command for Sniff {
     }
     
     fn show_usage() {
-        println!("USAGE: {} sniff -u <uri> -m <mode> [-o <output>]", BIN_NAME);
+        println!("USAGE: {} sniff -u <uri> -m <mode> [-o <output>]", env::args().next().unwrap_or("sniffer".to_string()));
     }
 }

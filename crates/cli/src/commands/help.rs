@@ -1,5 +1,4 @@
 use crate::commands::Command;
-use crate::BIN_NAME;
 use std::collections::HashMap;
 
 pub struct Help;
@@ -42,6 +41,6 @@ Usage: sniffer [command] [options]...
     }
 
     fn show_usage() {
-        println!("USAGE: {} help ", BIN_NAME);
+        println!("USAGE: {} help ", std::env::args().next().unwrap_or("sniffer".to_string()));
     }
 }
