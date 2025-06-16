@@ -1,0 +1,21 @@
+services:
+  mysql_db:
+    build:
+      context: ./containers
+      dockerfile: mysql.dockerfile
+    environment:
+      MYSQL_ROOT_PASSWORD: abc123.
+      MYSQL_DATABASE: test_db
+      MYSQL_USER: test_user
+      MYSQL_PASSWORD: abc123.
+    ports:
+      - "50000:3306"
+  mssql_db:
+    build:
+      context: ./containers
+      dockerfile: mssql.dockerfile
+    environment:
+      ACCEPT_EULA: Y
+      MSSQL_SA_PASSWORD: D3fault&Pass
+    ports:
+      - "50001:1433"

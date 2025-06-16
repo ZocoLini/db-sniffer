@@ -1,14 +1,14 @@
 use std::path::{Path, PathBuf};
-use std::{fs, process};
 use std::process::Output;
+use std::{fs, process};
 
-pub struct Dependencie {
+pub struct Dependency {
     group_id: String,
     artifact_id: String,
     version: String,
 }
 
-impl Dependencie {
+impl Dependency {
     pub fn new(group_id: &str, artifact_id: &str, version: &str) -> Self {
         Self {
             group_id: group_id.to_string(),
@@ -34,43 +34,34 @@ impl Dependencie {
 
 pub struct MavenProject {
     dir: PathBuf,
-    dependencies: Vec<Dependencie>,
+    dependencies: Vec<Dependency>,
 }
 
 impl MavenProject {
     pub fn new<T: AsRef<Path>>(dir: T) -> Self {
+        let mut dependencies = vec![
+            Dependency::new("junit", "junit", "4.13.2"),
+            Dependency::new("org.hibernate", "hibernate-core", "6.6.5.Final"),
+        ];
 
-        let mut dependencies = vec![];
-        
-        dependencies.push(Dependencie::new(
-            "junit",
-            "junit",
-            "4.13.2")
-        );
-        dependencies.push(Dependencie::new(
-            "org.hibernate",
-            "hibernate-core",
-            "6.6.5.Final",
-        ));
-        
         Self {
             dir: PathBuf::from(dir.as_ref()),
             dependencies,
         }
     }
 
-    pub fn add_dependency(&mut self, dep: Dependencie) {
+    pub fn add_dependency(&mut self, dep: Dependency) {
         self.dependencies.push(dep);
     }
 }
 
 impl MavenProject {
     pub fn create_archetype(&self, main_content: &str) -> Result<(), &str> {
-        std::fs::create_dir_all(self.get_package_src_dir())
+        fs::create_dir_all(self.get_package_src_dir())
             .map_err(|_| "Failed to create package source directory")?;
-        std::fs::create_dir_all(self.get_package_resources_dir())
+        fs::create_dir_all(self.get_package_resources_dir())
             .map_err(|_| "Failed to create package resources directory")?;
-        std::fs::create_dir_all(self.get_resources_dir().join("META-INF"))
+        fs::create_dir_all(self.get_resources_dir().join("META-INF"))
             .map_err(|_| "Failed to create META-INF directory")?;
 
         let dependencies_string = self
@@ -170,12 +161,12 @@ impl MavenProject {
 </project>"#
         );
 
-        std::fs::write(self.dir.join("pom.xml"), pom_content).expect("Failed to write to pom.xml");
+        fs::write(self.dir.join("pom.xml"), pom_content).expect("Failed to write to pom.xml");
 
-        std::fs::write(self.get_package_src_dir().join("Main.java"), main_content)
+        fs::write(self.get_package_src_dir().join("Main.java"), main_content)
             .map_err(|_| "Failed to write to Main.java")?;
 
-        std::fs::write(
+        fs::write(
             self.get_resources_dir().join("META-INF/MANIFEST.MF"),
             "Manifest-Version: 1.0\nMain-Class: com.example.Main\n",
         )
@@ -223,7 +214,6 @@ impl MavenProject {
     }
 }
 
-pub fn com_example_main_file_content() -> String
-{
+pub fn com_example_main_file_content() -> String {
     fs::read_to_string("test_resources/hibernate-maven-com.example.main.java").unwrap()
 }

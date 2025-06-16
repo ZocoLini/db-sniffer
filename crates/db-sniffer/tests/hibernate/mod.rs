@@ -48,7 +48,7 @@ fn move_config_and_mapping_files_to_resources(maven_project: &MavenProject) {
         });
 }
 
-pub async fn start_hibernate_test(conn_str: &str, db_dependency: maven::Dependencie, container: DBContainer) {
+pub async fn start_hibernate_test(conn_str: &str, db_dependency: maven::Dependency, container: DBContainer) {
     let test_dir = test_dir::get();
 
     container.start();
@@ -69,7 +69,7 @@ pub async fn start_hibernate_test(conn_str: &str, db_dependency: maven::Dependen
 
     return fs::remove_dir_all(test_dir).expect("Error removing the test dir");
     
-    async fn aux(conn_str: &str, db_dependency: maven::Dependencie, test_dir: &str) -> Result<Output, String> {
+    async fn aux(conn_str: &str, db_dependency: maven::Dependency, test_dir: &str) -> Result<Output, String> {
         // Creating a Maven archetype project
         let mut maven_project = MavenProject::new(test_dir::get());
 
