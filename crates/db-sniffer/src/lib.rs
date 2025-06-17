@@ -17,3 +17,5 @@ pub use db_objects::Table;
 pub use error::Error;
 pub use sniffers::sniff;
 pub use sniffers::SniffResults;
+
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
